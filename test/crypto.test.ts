@@ -35,4 +35,9 @@ describe('crypto', () => {
     expect(constantTimeEqualBase64(h, sha256Base64('secret'))).to.equal(true);
     expect(constantTimeEqualBase64(h, sha256Base64('nope'))).to.equal(false);
   });
+
+  it('constantTimeEqualBase64 returns false (no throw) on length mismatch', () => {
+    // 'YQ==' decodes to 1 byte, 'YWJj' decodes to 3 bytes
+    expect(constantTimeEqualBase64('YQ==', 'YWJj')).to.equal(false);
+  });
 });
