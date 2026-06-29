@@ -16,4 +16,10 @@ describe('loadConfig', () => {
   it('throws when BASE_URL is missing', () => {
     expect(() => loadConfig({} as NodeJS.ProcessEnv)).to.throw(/BASE_URL/);
   });
+
+  it('throws when KV_BACKEND is redis and REDIS_URL is missing', () => {
+    expect(() => loadConfig({ BASE_URL: 'https://x.test' } as NodeJS.ProcessEnv)).to.throw(
+      /REDIS_URL/,
+    );
+  });
 });
