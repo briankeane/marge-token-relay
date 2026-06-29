@@ -100,7 +100,7 @@ Bot polls this endpoint to retrieve the sealed authorization code.
 
 ### GET /healthz
 
-Returns `200 OK` with body `ok`. Used by Render as a health-check probe.
+Returns `200` with JSON body `{"status":"ok"}`. Used by Render as a health-check probe.
 
 ## Seal format (X25519)
 
@@ -143,7 +143,7 @@ cp .env.example .env
 # Edit .env: set KV_BACKEND=memory (no Redis needed for local dev)
 npm install
 npm run dev      # tsx watch — auto-reloads on file changes
-npm test         # runs all 31 tests against in-memory KV
+npm test         # runs the full test suite against an in-memory KV
 ```
 
 The `KV_BACKEND=memory` backend stores sessions in a plain JavaScript `Map` and requires no Redis instance. Tests always use the memory backend.

@@ -17,6 +17,16 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run:
+          name: smoke test built server boots
+          command: |
+            BASE_URL=http://localhost:3000 KV_BACKEND=memory PORT=3000 node dist/server.js &
+            SERVER_PID=$!
+            sleep 2
+            curl -fsS http://localhost:3000/healthz
+            STATUS=$?
+            kill $SERVER_PID
+            exit $STATUS
 
 workflows:
   ci:
