@@ -3,6 +3,7 @@ import type { KV } from './lib/kv.js';
 import type { Config } from './config.js';
 import { healthRouter } from './api/health.js';
 import { sessionRouter } from './api/session.js';
+import { authorizeRouter } from './api/authorize.js';
 import { errorHandler } from './middleware/error.js';
 
 export interface AppDeps {
@@ -15,6 +16,7 @@ export function buildApp(deps: AppDeps): Express {
   app.use(express.json());
   app.use(healthRouter);
   app.use(sessionRouter(deps));
+  app.use(authorizeRouter(deps));
   app.use(errorHandler);
   return app;
 }
