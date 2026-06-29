@@ -3,6 +3,7 @@ import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { MemoryKV } from '../src/lib/kv.js';
+import { initCrypto } from '../src/lib/crypto.js';
 
 function makeApp() {
   const config = loadConfig({
@@ -29,6 +30,11 @@ const validBody = {
 };
 
 describe('POST /session', () => {
+  // botPublicKey validation decodes with libsodium, so sodium must be ready.
+  before(async () => {
+    await initCrypto();
+  });
+
   it('creates a session and returns sessionId + authorizeUrl', async () => {
     const { app } = makeApp();
     const res = await request(app).post('/session').send(validBody);
@@ -58,6 +64,17 @@ describe('POST /session', () => {
     const res = await request(app)
       .post('/session')
       .send({ ...validBody, botPublicKey: 'cHVia2V5' }); // "pubkey" -> 6 bytes
+    expect(res.status).to.equal(400);
+  });
+
+  it('rejects a URL-safe base64 botPublicKey with 400 (seal() decoder is strict ORIGINAL)', async () => {
+    const { app } = makeApp();
+    // 32 bytes of 0xFF -> base64url is all "_" chars, which Node's lenient decoder
+    // accepts as 32 bytes but sodium's ORIGINAL decoder (used by seal()) rejects.
+    const urlSafeKey = Buffer.alloc(32, 0xff).toString('base64url');
+    const res = await request(app)
+      .post('/session')
+      .send({ ...validBody, botPublicKey: urlSafeKey });
     expect(res.status).to.equal(400);
   });
 

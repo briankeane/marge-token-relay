@@ -3,6 +3,7 @@ import type { AppDeps } from '../app.js';
 import { newToken } from '../lib/ids.js';
 import { sessionKey, stateKey, type SessionRecord } from '../lib/session.js';
 import type { ConsentParams } from '../lib/google.js';
+import { isValidSealRecipientKey } from '../lib/crypto.js';
 
 function parseConsent(body: unknown): ConsentParams | null {
   if (typeof body !== 'object' || body === null) return null;
@@ -28,13 +29,6 @@ function parseConsent(body: unknown): ConsentParams | null {
   return { clientId, scopes, state, codeChallenge, loginHint };
 }
 
-// A valid X25519 public key is exactly 32 bytes. Validate at session creation so
-// the bot gets a clear 400 now, rather than the user hitting a 500 at /callback
-// when seal() throws on a malformed key (after they've already consented).
-function isValidX25519PublicKey(b64: string): boolean {
-  return Buffer.from(b64, 'base64').length === 32;
-}
-
 export function sessionRouter(deps: AppDeps): Router {
   const router = Router();
   router.post('/session', async (req, res) => {
@@ -45,7 +39,7 @@ export function sessionRouter(deps: AppDeps): Router {
       !consent ||
       typeof pickupHash !== 'string' ||
       typeof botPublicKey !== 'string' ||
-      !isValidX25519PublicKey(botPublicKey)
+      !isValidSealRecipientKey(botPublicKey)
     ) {
       res.status(400).json({ error: 'invalid_request' });
       return;

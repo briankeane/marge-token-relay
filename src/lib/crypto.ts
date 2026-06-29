@@ -18,6 +18,19 @@ export function seal(plaintext: string, recipientPubKeyB64: string): string {
   return sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL);
 }
 
+// True iff `b64` is a valid recipient key for seal(): it must decode under the
+// SAME strict decoder seal() uses (base64_variants.ORIGINAL, which rejects the
+// URL-safe `-_` alphabet that Node's lenient decoder silently accepts) and yield
+// a 32-byte X25519 key. Validating with the exact decoder seal() uses guarantees
+// a key that passes here cannot throw inside seal() later. Requires initCrypto().
+export function isValidSealRecipientKey(b64: string): boolean {
+  try {
+    return sodium.from_base64(b64, sodium.base64_variants.ORIGINAL).length === 32;
+  } catch {
+    return false;
+  }
+}
+
 export function sha256Base64(input: string): string {
   return createHash('sha256').update(input, 'utf8').digest('base64');
 }
