@@ -74,6 +74,8 @@ describe('GET /callback', () => {
     expect(updated.status).to.equal('complete');
     expect(updated.error).to.equal('access_denied');
     expect(updated.sealedCode).to.equal(undefined);
+    // state index is consumed even on the error path (single-use)
+    expect(await kv.get(stateKey('st1'))).to.equal(null);
   });
 
   it('returns 410 when state is unknown/expired', async () => {
