@@ -32,12 +32,20 @@ export function resultRouter(deps: AppDeps): Router {
       return;
     }
 
-    // Single-use: consume the session now.
-    await deps.kv.getAndDelete(sessionKey(sessionId));
-    if (record.error) {
-      res.status(200).json({ error: record.error });
+    // Single-use: atomically claim the session. Gate the response on getAndDelete's
+    // return (not the earlier get) so two concurrent pollers can't both deliver the
+    // sealed code — only the request whose GETDEL actually returned the value wins;
+    // the loser sees null and gets 404.
+    const claimed = await deps.kv.getAndDelete(sessionKey(sessionId));
+    if (!claimed) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    const claimedRecord = JSON.parse(claimed) as SessionRecord;
+    if (claimedRecord.error) {
+      res.status(200).json({ error: claimedRecord.error });
     } else {
-      res.status(200).json({ sealedCode: record.sealedCode });
+      res.status(200).json({ sealedCode: claimedRecord.sealedCode });
     }
   });
   return router;

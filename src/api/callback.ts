@@ -15,7 +15,10 @@ export function callbackRouter(deps: AppDeps): Router {
       res.status(400).json({ error: 'invalid_request' });
       return;
     }
-    const sessionId = await deps.kv.get(stateKey(state));
+    // Consume the state index atomically up front (single GETDEL). A retried
+    // callback (e.g. browser back/resubmit) finds no state and gets 410, so it
+    // can never overwrite a session whose code the bot may have already picked up.
+    const sessionId = await deps.kv.getAndDelete(stateKey(state));
     if (!sessionId) {
       res.status(410).sendFile(path.join(publicDir, 'error.html'));
       return;
@@ -42,7 +45,6 @@ export function callbackRouter(deps: AppDeps): Router {
 
     const ttl = deps.config.sessionTtlSeconds;
     await deps.kv.put(sessionKey(sessionId), JSON.stringify(record), ttl);
-    await deps.kv.getAndDelete(stateKey(state)); // state is spent
 
     const page = record.error ? 'error.html' : 'success.html';
     res.status(200).sendFile(path.join(publicDir, page));

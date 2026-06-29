@@ -83,4 +83,22 @@ describe('GET /callback', () => {
     const res = await request(app).get('/callback?state=nope&code=x');
     expect(res.status).to.equal(410);
   });
+
+  it('a replayed callback for an already-consumed state returns 410 (no re-seal)', async () => {
+    const { app, kv } = makeApp();
+    await kv.put(sessionKey('sess3'), JSON.stringify(seededRecord()), 600);
+    await kv.put(stateKey('st1'), 'sess3', 600);
+
+    const first = await request(app).get('/callback?state=st1&code=auth-code-123');
+    expect(first.status).to.equal(200);
+    const sealedAfterFirst = (JSON.parse((await kv.get(sessionKey('sess3')))!) as SessionRecord)
+      .sealedCode;
+
+    // Replay: state was consumed, so the second callback must not touch the session.
+    const replay = await request(app).get('/callback?state=st1&code=different-code');
+    expect(replay.status).to.equal(410);
+    const sealedAfterReplay = (JSON.parse((await kv.get(sessionKey('sess3')))!) as SessionRecord)
+      .sealedCode;
+    expect(sealedAfterReplay).to.equal(sealedAfterFirst);
+  });
 });

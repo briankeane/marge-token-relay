@@ -22,4 +22,14 @@ describe('loadConfig', () => {
       /REDIS_URL/,
     );
   });
+
+  it('throws when SESSION_TTL_SECONDS is non-numeric or non-positive', () => {
+    const base = { BASE_URL: 'https://x.test', KV_BACKEND: 'memory' };
+    expect(() => loadConfig({ ...base, SESSION_TTL_SECONDS: 'abc' } as NodeJS.ProcessEnv)).to.throw(
+      /SESSION_TTL_SECONDS/,
+    );
+    expect(() => loadConfig({ ...base, SESSION_TTL_SECONDS: '0' } as NodeJS.ProcessEnv)).to.throw(
+      /SESSION_TTL_SECONDS/,
+    );
+  });
 });
