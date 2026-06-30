@@ -79,7 +79,9 @@ def create_session(base, client_id, scopes, state, code_challenge, pickup_hash, 
     return body["sessionId"], body["authorizeUrl"]
 
 
-def poll_result(base, session_id, secret, timeout=180, interval=2):
+def poll_result(base, session_id, secret, timeout=180, interval=5):
+    # Poll at 5s (relay rate-limits /result to ~30 req/min); 30s consent waits would
+    # otherwise exhaust the budget at a tighter interval.
     deadline = time.time() + timeout
     while time.time() < deadline:
         resp = requests.post(
@@ -87,7 +89,9 @@ def poll_result(base, session_id, secret, timeout=180, interval=2):
             json={"sessionId": session_id, "pickup_secret": secret},
             timeout=30,
         )
-        if resp.status_code == 204:
+        # 204 = code not ready yet; 429 = relay rate-limited our polling. Both mean
+        # "wait and retry" rather than fail.
+        if resp.status_code in (204, 429):
             time.sleep(interval)
             continue
         if resp.status_code == 200:
@@ -173,13 +177,15 @@ def run_real(base: str, show: bool) -> None:
             base, client_id, scopes, state, challenge, pickup_hash, bot_pub
         )
         print(f"\nOpen this URL in your browser and grant consent:\n\n  {authorize_url}\n")
-        try:
-            webbrowser.open(authorize_url)
-        except Exception:
-            pass
+        if os.environ.get("NO_BROWSER") != "1":
+            try:
+                webbrowser.open(authorize_url)
+            except Exception:
+                pass
 
-        print("Waiting for the sealed code (polling /result)...")
-        result = poll_result(base, session_id, secret, timeout=180)
+        poll_timeout = int(os.environ.get("POLL_TIMEOUT_SECONDS", "180"))
+        print(f"Waiting for the sealed code (polling /result, up to {poll_timeout}s)...")
+        result = poll_result(base, session_id, secret, timeout=poll_timeout)
         if "error" in result:
             print(f"FAIL: Google returned an OAuth error: {result['error']}")
             sys.exit(1)
