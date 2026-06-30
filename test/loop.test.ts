@@ -109,12 +109,13 @@ describe('full relay loop (session -> authorize -> callback -> result)', () => {
 
     const cbRes = await request(app).get(`/callback?state=${state}&error=access_denied`);
     expect(cbRes.status).to.equal(200);
+    expect(cbRes.text).to.contain('Something went wrong');
 
     const resultRes = await request(app)
       .post('/result')
       .send({ sessionId, pickup_secret: pickupSecret });
     expect(resultRes.status).to.equal(200);
     expect(resultRes.body.error).to.equal('access_denied');
-    expect(resultRes.body.sealedCode).to.equal(undefined);
+    expect(resultRes.body).to.not.have.property('sealedCode');
   });
 });
