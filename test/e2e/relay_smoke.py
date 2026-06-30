@@ -11,6 +11,7 @@ import os
 import secrets
 import sys
 import time
+import webbrowser
 
 import requests
 from nacl.public import PrivateKey, SealedBox
@@ -120,16 +121,94 @@ def run_interop(base: str) -> None:
     print(f"PASS interop: PyNaCl opened the libsodium-sealed code ({len(opened)} chars matched).")
 
 
+def require_env(name: str) -> str:
+    val = os.environ.get(name)
+    if not val:
+        print(f"FAIL: required env var {name} is not set (see test/e2e/README.md)")
+        sys.exit(2)
+    return val
+
+
+def mask(value: str) -> str:
+    if not value:
+        return "<missing>"
+    return f"{value[:6]}...({len(value)} chars)"
+
+
+def exchange_code(code, client_id, client_secret, code_verifier, redirect_uri):
+    resp = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "code_verifier": code_verifier,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri,
+        },
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Google token endpoint -> {resp.status_code}: {resp.text}")
+    return resp.json()
+
+
+def run_real(base: str, show: bool) -> None:
+    client_id = require_env("GOOGLE_CLIENT_ID")
+    client_secret = require_env("GOOGLE_CLIENT_SECRET")
+    scopes = os.environ.get("OAUTH_SCOPES", "openid email profile")
+    redirect_uri = f"{base}/callback"
+
+    priv, bot_pub = gen_keypair()
+    verifier, challenge = make_pkce()
+    secret, pickup_hash = make_pickup()
+    state = secrets.token_urlsafe(16)
+
+    session_id, authorize_url = create_session(
+        base, client_id, scopes, state, challenge, pickup_hash, bot_pub
+    )
+    print(f"\nOpen this URL in your browser and grant consent:\n\n  {authorize_url}\n")
+    try:
+        webbrowser.open(authorize_url)
+    except Exception:
+        pass
+
+    print("Waiting for the sealed code (polling /result)...")
+    result = poll_result(base, session_id, secret, timeout=180)
+    if "error" in result:
+        print(f"FAIL: Google returned an OAuth error: {result['error']}")
+        sys.exit(1)
+
+    code = open_sealed(priv, result["sealedCode"])
+    print("Opened the sealed code; redeeming it at Google's token endpoint...")
+    tokens = exchange_code(code, client_id, client_secret, verifier, redirect_uri)
+
+    access = tokens.get("access_token")
+    refresh = tokens.get("refresh_token")
+    if not access or not refresh:
+        print(f"FAIL: token response missing access/refresh token (keys={list(tokens)})")
+        sys.exit(1)
+
+    print("\nPASS real: the relay delivered a redeemable Google authorization code.")
+    print(f"  access_token : {access if show else mask(access)}")
+    print(f"  refresh_token: {refresh if show else mask(refresh)}")
+    print(f"  expires_in   : {tokens.get('expires_in')}")
+    print(f"  scope        : {tokens.get('scope')}")
+
+
 def main() -> None:
     here = os.path.dirname(os.path.abspath(__file__))
     load_env_file(os.path.join(here, ".env"))
     base = os.environ.get("RELAY_BASE_URL", "http://localhost:3000").rstrip("/")
+    show = "--show" in sys.argv
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     mode = args[0] if args else "real"
     if mode == "interop":
         run_interop(base)
+    elif mode == "real":
+        run_real(base, show)
     else:
-        print(f"unknown mode {mode!r}; expected 'interop' (real mode added in Task 4)")
+        print(f"usage: relay_smoke.py [interop|real] [--show]  (got mode {mode!r})")
         sys.exit(2)
 
 
