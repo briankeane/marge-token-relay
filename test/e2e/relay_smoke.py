@@ -9,7 +9,10 @@ import base64
 import hashlib
 import os
 import secrets
+import sys
+import time
 
+import requests
 from nacl.public import PrivateKey, SealedBox
 
 
@@ -39,3 +42,96 @@ def make_pickup():
 def open_sealed(priv: PrivateKey, sealed_b64: str) -> str:
     sealed = base64.standard_b64decode(sealed_b64)
     return SealedBox(priv).decrypt(sealed).decode("utf-8")
+
+
+def load_env_file(path: str) -> None:
+    """Minimal .env loader (KEY=VALUE per line) so the script has zero non-listed deps."""
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            os.environ.setdefault(key.strip(), val.strip())
+
+
+def create_session(base, client_id, scopes, state, code_challenge, pickup_hash, bot_pub_b64,
+                   login_hint=None):
+    consent = {
+        "clientId": client_id,
+        "scopes": scopes,
+        "state": state,
+        "codeChallenge": code_challenge,
+    }
+    if login_hint:
+        consent["loginHint"] = login_hint
+    resp = requests.post(
+        f"{base}/session",
+        json={"consent": consent, "pickupHash": pickup_hash, "botPublicKey": bot_pub_b64},
+        timeout=30,
+    )
+    if resp.status_code != 201:
+        raise RuntimeError(f"POST /session -> {resp.status_code}: {resp.text}")
+    body = resp.json()
+    return body["sessionId"], body["authorizeUrl"]
+
+
+def poll_result(base, session_id, secret, timeout=180, interval=2):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        resp = requests.post(
+            f"{base}/result",
+            json={"sessionId": session_id, "pickup_secret": secret},
+            timeout=30,
+        )
+        if resp.status_code == 204:
+            time.sleep(interval)
+            continue
+        if resp.status_code == 200:
+            return resp.json()
+        raise RuntimeError(f"POST /result -> {resp.status_code}: {resp.text}")
+    raise TimeoutError("timed out waiting for /result")
+
+
+def run_interop(base: str) -> None:
+    """No Google, no browser: prove PyNaCl opens what the relay's libsodium sealed."""
+    priv, bot_pub = gen_keypair()
+    _verifier, challenge = make_pkce()
+    secret, pickup_hash = make_pickup()
+    state = secrets.token_urlsafe(16)
+    probe = "interop-probe-" + secrets.token_hex(6)
+
+    session_id, _authorize_url = create_session(
+        base, "interop-client", "openid email", state, challenge, pickup_hash, bot_pub
+    )
+    # Simulate Google's redirect straight to the relay callback (server endpoint, no browser).
+    cb = requests.get(f"{base}/callback", params={"state": state, "code": probe}, timeout=30)
+    if cb.status_code != 200:
+        raise RuntimeError(f"GET /callback -> {cb.status_code}: {cb.text}")
+
+    result = poll_result(base, session_id, secret, timeout=30)
+    if "sealedCode" not in result:
+        raise RuntimeError(f"expected sealedCode, got {result}")
+    opened = open_sealed(priv, result["sealedCode"])
+    if opened != probe:
+        raise AssertionError(f"interop mismatch: {opened!r} != {probe!r}")
+    print(f"PASS interop: PyNaCl opened the libsodium-sealed code ({len(opened)} chars matched).")
+
+
+def main() -> None:
+    here = os.path.dirname(os.path.abspath(__file__))
+    load_env_file(os.path.join(here, ".env"))
+    base = os.environ.get("RELAY_BASE_URL", "http://localhost:3000").rstrip("/")
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    mode = args[0] if args else "real"
+    if mode == "interop":
+        run_interop(base)
+    else:
+        print(f"unknown mode {mode!r}; expected 'interop' (real mode added in Task 4)")
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
