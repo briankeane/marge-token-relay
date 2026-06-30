@@ -1,7 +1,9 @@
 import base64
 import hashlib
 
-from relay_smoke import pkce_challenge, make_pkce, make_pickup, gen_keypair
+from nacl.public import PrivateKey, SealedBox
+
+from relay_smoke import pkce_challenge, make_pkce, make_pickup, gen_keypair, open_sealed
 
 
 def test_pkce_challenge_matches_rfc7636_vector():
@@ -28,3 +30,14 @@ def test_bot_public_key_is_32_byte_padded_standard_base64():
     _, bot_pub = gen_keypair()
     raw = base64.standard_b64decode(bot_pub)
     assert len(raw) == 32
+
+
+def test_open_sealed_round_trips_a_standard_base64_sealed_box():
+    # Mirrors the relay: seal a code to the bot's public key with a NaCl SealedBox
+    # (== libsodium crypto_box_seal) and standard-base64-encode it, exactly as the
+    # relay's seal() does. open_sealed must decode + decrypt + utf-8 back to the code.
+    priv = PrivateKey.generate()
+    code = "4/0AaUthorization-code-EXAMPLE"
+    sealed = SealedBox(priv.public_key).encrypt(code.encode("utf-8"))
+    sealed_b64 = base64.standard_b64encode(sealed).decode("ascii")
+    assert open_sealed(priv, sealed_b64) == code

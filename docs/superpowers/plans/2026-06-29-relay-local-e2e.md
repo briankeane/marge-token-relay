@@ -568,7 +568,7 @@ def require_env(name: str) -> str:
 def mask(value: str) -> str:
     if not value:
         return "<missing>"
-    return f"{value[:6]}...({len(value)} chars)"
+    return f"<redacted, {len(value)} chars>"
 
 
 def exchange_code(code, client_id, client_secret, code_verifier, redirect_uri):

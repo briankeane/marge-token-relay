@@ -164,24 +164,32 @@ def run_real(base: str, show: bool) -> None:
     secret, pickup_hash = make_pickup()
     state = secrets.token_urlsafe(16)
 
-    session_id, authorize_url = create_session(
-        base, client_id, scopes, state, challenge, pickup_hash, bot_pub
-    )
-    print(f"\nOpen this URL in your browser and grant consent:\n\n  {authorize_url}\n")
+    # create_session/poll_result/exchange_code raise RuntimeError on unexpected
+    # relay/Google responses, and poll_result raises TimeoutError if consent is not
+    # completed in time. Surface those as the script's FAIL: ... convention rather
+    # than a raw traceback.
     try:
-        webbrowser.open(authorize_url)
-    except Exception:
-        pass
+        session_id, authorize_url = create_session(
+            base, client_id, scopes, state, challenge, pickup_hash, bot_pub
+        )
+        print(f"\nOpen this URL in your browser and grant consent:\n\n  {authorize_url}\n")
+        try:
+            webbrowser.open(authorize_url)
+        except Exception:
+            pass
 
-    print("Waiting for the sealed code (polling /result)...")
-    result = poll_result(base, session_id, secret, timeout=180)
-    if "error" in result:
-        print(f"FAIL: Google returned an OAuth error: {result['error']}")
+        print("Waiting for the sealed code (polling /result)...")
+        result = poll_result(base, session_id, secret, timeout=180)
+        if "error" in result:
+            print(f"FAIL: Google returned an OAuth error: {result['error']}")
+            sys.exit(1)
+
+        code = open_sealed(priv, result["sealedCode"])
+        print("Opened the sealed code; redeeming it at Google's token endpoint...")
+        tokens = exchange_code(code, client_id, client_secret, verifier, redirect_uri)
+    except (TimeoutError, RuntimeError) as e:
+        print(f"FAIL: {e}")
         sys.exit(1)
-
-    code = open_sealed(priv, result["sealedCode"])
-    print("Opened the sealed code; redeeming it at Google's token endpoint...")
-    tokens = exchange_code(code, client_id, client_secret, verifier, redirect_uri)
 
     access = tokens.get("access_token")
     refresh = tokens.get("refresh_token")
