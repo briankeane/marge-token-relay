@@ -47,6 +47,24 @@ describe('GET /connect', () => {
     expect(parsed.status).to.equal('pending');
   });
 
+  it('still serves the interstitial for a completed session (documents intentional behavior)', async () => {
+    // A session whose consent already completed remains in KV until TTL. Re-tapping
+    // the old link renders the page and, on tap, /authorize redirects to Google —
+    // but that reuses a `state` the callback already GETDEL'd, so a second callback
+    // gets 410 and no code is ever re-sealed. We deliberately do NOT status-gate
+    // /connect: it mirrors /authorize (which also serves completed sessions), and
+    // the reuse is already rejected safely downstream. This test locks that in.
+    const { app, kv } = makeApp();
+    const id = newToken();
+    const completed: SessionRecord = { ...record, status: 'complete', sealedCode: 'sealed' };
+    await kv.put(sessionKey(id), JSON.stringify(completed), 600);
+
+    const res = await request(app).get(`/connect?session=${id}`).redirects(0);
+
+    expect(res.status).to.equal(200);
+    expect(res.text).to.contain(`/authorize?session=${id}`);
+  });
+
   it('returns 410 for a well-formed but unknown/expired session', async () => {
     const { app } = makeApp();
     const res = await request(app).get(`/connect?session=${newToken()}`).redirects(0);

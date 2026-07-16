@@ -27,6 +27,7 @@ export function buildApp(deps: AppDeps): Express {
 
   app.use(healthRouter);
   app.use('/session', limiter);
+  app.use('/connect', limiter);
   app.use('/result', limiter);
   app.use(sessionRouter(deps));
   app.use(connectRouter(deps));

@@ -1,13 +1,17 @@
 import { Router } from 'express';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { AppDeps } from '../app.js';
 import { sessionKey } from '../lib/session.js';
 import { isValidToken } from '../lib/ids.js';
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
-const connectHtmlPath = path.join(publicDir, 'connect.html');
+// Read the interstitial template ONCE at module load. The raw content is constant;
+// only the per-session href is substituted per request. Reading here (rather than
+// per request) avoids file I/O on every link tap and turns a missing/mis-deployed
+// connect.html into a startup crash instead of a runtime 500.
+const connectHtmlTemplate = readFileSync(path.join(publicDir, 'connect.html'), 'utf8');
 
 /**
  * GET /connect?session=X — the static interstitial "bounce" page.
@@ -39,7 +43,9 @@ export function connectRouter(deps: AppDeps): Router {
     }
     // `session` has passed isValidToken (strict ^[A-Za-z0-9_-]{43}$), so it is
     // safe to interpolate into the href. No other user input is interpolated.
-    const html = (await readFile(connectHtmlPath, 'utf8')).replace(
+    // replaceAll (not replace) so a future second placeholder can't silently
+    // survive as a literal string.
+    const html = connectHtmlTemplate.replaceAll(
       '__AUTHORIZE_URL__',
       `/authorize?session=${session}`,
     );
