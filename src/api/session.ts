@@ -67,7 +67,7 @@ export function sessionRouter(deps: AppDeps): Router {
 
     res.status(201).json({
       sessionId,
-      authorizeUrl: `${deps.config.baseUrl}/authorize?session=${sessionId}`,
+      authorizeUrl: `${deps.config.baseUrl}/connect?session=${sessionId}`,
     });
   });
   return router;
