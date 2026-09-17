@@ -1,4 +1,4 @@
-import type { ConsentParams } from './google.js';
+import type { ConsentParams } from './providers.js';
 
 export type SessionStatus = 'pending' | 'complete';
 

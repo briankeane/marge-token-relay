@@ -10,7 +10,19 @@ describe('loadConfig', () => {
     expect(cfg.baseUrl).to.equal('https://relay.example.com');
     expect(cfg.kvBackend).to.equal('memory');
     expect(cfg.sessionTtlSeconds).to.equal(600);
-    expect(cfg.googleAuthEndpoint).to.contain('accounts.google.com');
+    expect(cfg.providers.google.authorizeEndpoint).to.contain('accounts.google.com');
+    expect(cfg.providers.spotify.authorizeEndpoint).to.contain('accounts.spotify.com');
+  });
+
+  it('lets GOOGLE_AUTH_ENDPOINT override the google provider endpoint', () => {
+    const cfg = loadConfig({
+      BASE_URL: 'https://relay.example.com',
+      KV_BACKEND: 'memory',
+      GOOGLE_AUTH_ENDPOINT: 'https://accounts.google.com/o/oauth2/v2/auth?override=1',
+    } as NodeJS.ProcessEnv);
+    expect(cfg.providers.google.authorizeEndpoint).to.equal(
+      'https://accounts.google.com/o/oauth2/v2/auth?override=1',
+    );
   });
 
   it('throws when BASE_URL is missing', () => {

@@ -1,10 +1,12 @@
+import type { OAuthProvider } from './lib/providers.js';
+
 export type KvBackend = 'redis' | 'memory';
 
 export interface Config {
   baseUrl: string;
   redisUrl?: string;
   kvBackend: KvBackend;
-  googleAuthEndpoint: string;
+  providers: Record<string, OAuthProvider>;
   sessionTtlSeconds: number;
   port: number;
 }
@@ -20,11 +22,25 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   if (!Number.isFinite(sessionTtlSeconds) || sessionTtlSeconds <= 0) {
     throw new Error('SESSION_TTL_SECONDS must be a positive number');
   }
+  // Allowlist of OAuth providers the relay may redirect to. Adding one is a
+  // config-only change; nothing else in the relay is provider-aware.
+  const providers: Record<string, OAuthProvider> = {
+    google: {
+      authorizeEndpoint: env.GOOGLE_AUTH_ENDPOINT ?? 'https://accounts.google.com/o/oauth2/v2/auth',
+      extraAuthParams: { access_type: 'offline', prompt: 'consent' },
+      supportsLoginHint: true,
+    },
+    spotify: {
+      authorizeEndpoint: 'https://accounts.spotify.com/authorize',
+      extraAuthParams: {},
+      supportsLoginHint: false,
+    },
+  };
   return {
     baseUrl: baseUrl.replace(/\/$/, ''),
     redisUrl: env.REDIS_URL,
     kvBackend,
-    googleAuthEndpoint: env.GOOGLE_AUTH_ENDPOINT ?? 'https://accounts.google.com/o/oauth2/v2/auth',
+    providers,
     sessionTtlSeconds,
     port: Number(env.PORT ?? 3000),
   };
