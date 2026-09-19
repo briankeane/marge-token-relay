@@ -65,6 +65,46 @@ describe('GET /connect', () => {
     expect(res.text).to.contain(`/authorize?session=${id}`);
   });
 
+  it('renders provider-specific copy for a Spotify session (not "Google")', async () => {
+    const { app, kv } = makeApp();
+    const id = newToken();
+    const spotify: SessionRecord = {
+      ...record,
+      consent: { ...record.consent, provider: 'spotify' },
+    };
+    await kv.put(sessionKey(id), JSON.stringify(spotify), 600);
+
+    const res = await request(app).get(`/connect?session=${id}`).redirects(0);
+    expect(res.status).to.equal(200);
+    expect(res.text).to.contain('Spotify');
+    expect(res.text).to.not.contain('Google');
+  });
+
+  it('renders Google copy for a session with no provider (legacy default)', async () => {
+    const { app, kv } = makeApp();
+    const id = newToken();
+    await kv.put(sessionKey(id), JSON.stringify(record), 600); // record has no provider
+    const res = await request(app).get(`/connect?session=${id}`).redirects(0);
+    expect(res.text).to.contain('Google');
+    expect(res.text).to.not.contain('Spotify');
+  });
+
+  it('includes the browser-only auto-advance (external script + anchor id) and keeps the no-JS fallback link', async () => {
+    const { app, kv } = makeApp();
+    const id = newToken();
+    await kv.put(sessionKey(id), JSON.stringify(record), 600);
+    const res = await request(app).get(`/connect?session=${id}`).redirects(0);
+
+    // A real browser runs this same-origin script and navigates; crawlers don't.
+    expect(res.text).to.contain('<script src="/connect-advance.js">');
+    expect(res.text).to.contain('id="continue"');
+    // The plain anchor must survive as the crawler-safe / no-JS fallback.
+    expect(res.text).to.contain(`href="/authorize?session=${id}"`);
+    // Still a static 200, never a redirect.
+    expect(res.status).to.equal(200);
+    expect(res.headers.location).to.equal(undefined);
+  });
+
   it('returns 410 for a well-formed but unknown/expired session', async () => {
     const { app } = makeApp();
     const res = await request(app).get(`/connect?session=${newToken()}`).redirects(0);
@@ -77,5 +117,18 @@ describe('GET /connect', () => {
     expect((await request(app).get('/connect?session=not-a-token').redirects(0)).status).to.equal(
       400,
     );
+  });
+});
+
+describe('GET /connect-advance.js', () => {
+  it('serves the same-origin auto-advance script as JavaScript', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/connect-advance.js');
+    expect(res.status).to.equal(200);
+    expect(res.headers['content-type']).to.match(/javascript/);
+    // Navigates via the interstitial anchor using location.replace; crawlers don't run it.
+    expect(res.text).to.contain('continue');
+    expect(res.text).to.contain('location');
+    expect(res.text).to.contain('replace');
   });
 });
