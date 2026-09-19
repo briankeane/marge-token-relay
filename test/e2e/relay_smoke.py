@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Local end-to-end exercise of the marge-token-relay, standing in for marge-bot.
 
-Two modes (see Tasks 3-4):
-  interop  - no Google, no browser: proves PyNaCl opens what the relay's libsodium sealed.
+Three modes:
+  interop  - no provider, no browser: proves PyNaCl opens what the relay's libsodium sealed.
   real     - real browser consent + real Google token exchange.
+  spotify  - real browser consent + real Spotify token exchange (provider=spotify).
 """
 import base64
 import hashlib
@@ -59,7 +60,7 @@ def load_env_file(path: str) -> None:
 
 
 def create_session(base, client_id, scopes, state, code_challenge, pickup_hash, bot_pub_b64,
-                   login_hint=None):
+                   login_hint=None, provider=None):
     consent = {
         "clientId": client_id,
         "scopes": scopes,
@@ -68,6 +69,8 @@ def create_session(base, client_id, scopes, state, code_challenge, pickup_hash, 
     }
     if login_hint:
         consent["loginHint"] = login_hint
+    if provider:
+        consent["provider"] = provider
     resp = requests.post(
         f"{base}/session",
         json={"consent": consent, "pickupHash": pickup_hash, "botPublicKey": bot_pub_b64},
@@ -139,9 +142,10 @@ def mask(value: str) -> str:
     return f"<redacted, {len(value)} chars>"
 
 
-def exchange_code(code, client_id, client_secret, code_verifier, redirect_uri):
+def exchange_code(code, client_id, client_secret, code_verifier, redirect_uri,
+                  token_url="https://oauth2.googleapis.com/token"):
     resp = requests.post(
-        "https://oauth2.googleapis.com/token",
+        token_url,
         data={
             "client_id": client_id,
             "client_secret": client_secret,
@@ -153,7 +157,7 @@ def exchange_code(code, client_id, client_secret, code_verifier, redirect_uri):
         timeout=30,
     )
     if resp.status_code != 200:
-        raise RuntimeError(f"Google token endpoint -> {resp.status_code}: {resp.text}")
+        raise RuntimeError(f"token endpoint {token_url} -> {resp.status_code}: {resp.text}")
     return resp.json()
 
 
@@ -210,6 +214,59 @@ def run_real(base: str, show: bool) -> None:
     print(f"  scope        : {tokens.get('scope')}")
 
 
+def run_spotify(base: str, show: bool) -> None:
+    """Real browser consent + real Spotify token exchange, via provider=spotify."""
+    client_id = require_env("SPOTIFY_CLIENT_ID")
+    client_secret = require_env("SPOTIFY_CLIENT_SECRET")
+    scopes = os.environ.get("SPOTIFY_SCOPES", "playlist-modify-public playlist-modify-private")
+    redirect_uri = f"{base}/callback"
+
+    priv, bot_pub = gen_keypair()
+    verifier, challenge = make_pkce()
+    secret, pickup_hash = make_pickup()
+    state = secrets.token_urlsafe(16)
+
+    try:
+        session_id, authorize_url = create_session(
+            base, client_id, scopes, state, challenge, pickup_hash, bot_pub, provider="spotify"
+        )
+        print(f"\nOpen this URL in your browser and grant consent:\n\n  {authorize_url}\n")
+        if os.environ.get("NO_BROWSER") != "1":
+            try:
+                webbrowser.open(authorize_url)
+            except Exception:
+                pass
+
+        poll_timeout = int(os.environ.get("POLL_TIMEOUT_SECONDS", "180"))
+        print(f"Waiting for the sealed code (polling /result, up to {poll_timeout}s)...")
+        result = poll_result(base, session_id, secret, timeout=poll_timeout)
+        if "error" in result:
+            print(f"FAIL: Spotify returned an OAuth error: {result['error']}")
+            sys.exit(1)
+
+        code = open_sealed(priv, result["sealedCode"])
+        print("Opened the sealed code; redeeming it at Spotify's token endpoint...")
+        tokens = exchange_code(
+            code, client_id, client_secret, verifier, redirect_uri,
+            token_url="https://accounts.spotify.com/api/token",
+        )
+    except (TimeoutError, RuntimeError) as e:
+        print(f"FAIL: {e}")
+        sys.exit(1)
+
+    access = tokens.get("access_token")
+    refresh = tokens.get("refresh_token")
+    if not access or not refresh:
+        print(f"FAIL: token response missing access/refresh token (keys={list(tokens)})")
+        sys.exit(1)
+
+    print("\nPASS spotify: the relay delivered a redeemable Spotify authorization code.")
+    print(f"  access_token : {access if show else mask(access)}")
+    print(f"  refresh_token: {refresh if show else mask(refresh)}")
+    print(f"  expires_in   : {tokens.get('expires_in')}")
+    print(f"  scope        : {tokens.get('scope')}")
+
+
 def main() -> None:
     here = os.path.dirname(os.path.abspath(__file__))
     load_env_file(os.path.join(here, ".env"))
@@ -221,8 +278,10 @@ def main() -> None:
         run_interop(base)
     elif mode == "real":
         run_real(base, show)
+    elif mode == "spotify":
+        run_spotify(base, show)
     else:
-        print(f"usage: relay_smoke.py [interop|real] [--show]  (got mode {mode!r})")
+        print(f"usage: relay_smoke.py [interop|real|spotify] [--show]  (got mode {mode!r})")
         sys.exit(2)
 
 

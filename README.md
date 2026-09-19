@@ -1,14 +1,14 @@
 # marge-token-relay
 
-`marge-token-relay` is a small Express/TypeScript service that relays a Google OAuth 2.0 authorization code from the browser to an off-network bot. It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from Google, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in Redis under a short-lived session, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
+`marge-token-relay` is a small Express/TypeScript service that relays an OAuth 2.0 authorization code from the browser to an off-network bot. It supports multiple OAuth providers (Google and Spotify out of the box; the bot picks one per session via `consent.provider`). It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from the provider, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in Redis under a short-lived session, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
 
 ## Flow
 
 1. **Bot calls `POST /session`** with its OAuth consent parameters, a hashed pickup secret (`pickupHash`), and its X25519 public key (`botPublicKey`). The relay creates a session and responds with a `sessionId` and an `authorizeUrl`.
 2. **Bot sends `authorizeUrl` to the user** (e.g., in a chat message). The URL points to `GET /authorize?session=<sessionId>` on this relay.
-3. **User opens `GET /authorize`** in a browser. The relay looks up the session and redirects (302) to Google's OAuth consent screen.
-4. **Google redirects to `GET /callback`** with `?state=…&code=…` (or `?state=…&error=…`). The relay seals the authorization code with the bot's public key, stores the sealed ciphertext in the session record, and renders a result page to the user.
-5. **Bot polls `POST /result`** with `sessionId` and `pickup_secret` until it receives a `200` response. On success, the response contains `sealedCode` (or `error` if Google returned an error). The session is deleted immediately after the `200` response (single-use).
+3. **User opens `GET /authorize`** in a browser. The relay looks up the session and redirects (302) to the selected provider's OAuth consent screen.
+4. **The provider redirects to `GET /callback`** with `?state=…&code=…` (or `?state=…&error=…`). The relay seals the authorization code with the bot's public key, stores the sealed ciphertext in the session record, and renders a result page to the user.
+5. **Bot polls `POST /result`** with `sessionId` and `pickup_secret` until it receives a `200` response. On success, the response contains `sealedCode` (or `error` if the provider returned an error). The session is deleted immediately after the `200` response (single-use).
 
 ## API
 
@@ -20,11 +20,12 @@ Creates a new relay session. Returns a `sessionId` and the `authorizeUrl` to sen
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `consent.clientId` | string | yes | Google OAuth 2.0 client ID |
+| `consent.provider` | string | no | OAuth provider: `google` (default) or `spotify`. Unknown values are rejected with `400`. |
+| `consent.clientId` | string | yes | The provider's OAuth 2.0 client ID |
 | `consent.scopes` | string | yes | Space-delimited OAuth scopes |
 | `consent.state` | string | yes | CSRF/PKCE state value (bot-generated, opaque) |
 | `consent.codeChallenge` | string | yes | PKCE code challenge |
-| `consent.loginHint` | string | no | Optional Google login hint (email) |
+| `consent.loginHint` | string | no | Optional login hint (email); forwarded only for providers that support it (Google) |
 | `pickupHash` | string | yes | `base64(sha256(pickup_secret))` — standard base64, no padding stripping |
 | `botPublicKey` | string | yes | Raw 32-byte X25519 public key encoded as standard base64 |
 
@@ -55,15 +56,15 @@ Creates a new relay session. Returns a `sessionId` and the `authorizeUrl` to sen
 
 ### GET /authorize?session=\<id\>
 
-Looks up the session and issues a **302 redirect** to Google's OAuth consent screen with all stored consent parameters. The `redirect_uri` is set to `${BASE_URL}/callback`.
+Looks up the session and issues a **302 redirect** to the session provider's OAuth consent screen with all stored consent parameters. The `redirect_uri` is set to `${BASE_URL}/callback`.
 
-- **302** — redirect to Google consent screen
+- **302** — redirect to the provider's consent screen
 - **410** — session expired or not found; renders `expired.html`
 - **400** — missing or malformed `session` query parameter
 
 ### GET /callback?state=…&code=…|error=…
 
-Google redirects here after the user grants or denies consent. The relay:
+The provider redirects here after the user grants or denies consent. The relay:
 
 1. Looks up the session via the `state` parameter.
 2. If `code` is present: seals the code with the bot's public key and stores the `sealedCode` in the session record.
@@ -73,7 +74,7 @@ Google redirects here after the user grants or denies consent. The relay:
 The session status is set to `complete` so the bot's next poll returns `200`.
 
 - **200** — result page rendered to user
-- **410** — session not found (expired before Google redirected); renders `error.html`
+- **410** — session not found (expired before the provider redirected); renders `error.html`
 - **400** — missing `state` parameter
 
 ### POST /result
@@ -92,7 +93,7 @@ Bot polls this endpoint to retrieve the sealed authorization code.
 | Status | Body | Meaning |
 |---|---|---|
 | `200` | `{ "sealedCode": "<base64>" }` | OAuth code received and sealed; session deleted (single-use) |
-| `200` | `{ "error": "<string>" }` | Google returned an OAuth error; session deleted |
+| `200` | `{ "error": "<string>" }` | The provider returned an OAuth error; session deleted |
 | `204` | _(empty)_ | Session exists but code not yet received — poll again |
 | `403` | `{ "error": "forbidden" }` | `pickup_secret` does not match `pickupHash` |
 | `404` | `{ "error": "not_found" }` | Session not found (never existed or already consumed/expired) |
@@ -129,12 +130,23 @@ const pickupHash = createHash('sha256').update(pickupSecret, 'utf8').digest('bas
 
 This matches the relay's `sha256Base64` function. The hash uses standard base64 with padding — do not strip `=`.
 
-## Registering the redirect URI with Google
+## Registering the redirect URI
+
+Every provider must be told to accept the relay's single callback URL, `${BASE_URL}/callback`. The value must match **byte-for-byte** (scheme, host, path, no trailing slash). The **Client Secret** is never used by this relay — it stays in the bot, which performs the code→token exchange. The same `/callback` serves all providers; the relay tells sessions apart by `state`, not by path.
+
+### Google
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials**.
 2. Create or select an **OAuth 2.0 Client ID** of type **Web application**.
-3. Under **Authorized redirect URIs**, add: `${BASE_URL}/callback` (e.g., `https://marge-token-relay.onrender.com/callback`).
-4. Copy the **Client ID** — this is the `consent.clientId` field in `POST /session`. The **Client Secret** is NOT used by this relay; it stays in the bot.
+3. Under **Authorized redirect URIs**, add: `${BASE_URL}/callback` (e.g., `https://auth.marge-bot.com/callback`).
+4. Copy the **Client ID** — this is the `consent.clientId` field in `POST /session` (with `consent.provider` omitted or set to `google`).
+
+### Spotify
+
+1. Open the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) → **Create app**.
+2. Under **Redirect URIs**, add: `${BASE_URL}/callback` (e.g., `https://auth.marge-bot.com/callback`). Spotify requires **HTTPS** (as of the 27 Nov 2025 OAuth migration); `localhost` is rejected, only loopback IPs may use HTTP.
+3. Copy the **Client ID** — pass it as `consent.clientId` with `consent.provider: "spotify"` in `POST /session`.
+4. The app can stay in **Development Mode** for a small number of users (up to 25). Each user must be added to the app's user allowlist in the dashboard, or their consent will fail.
 
 ## Local development
 

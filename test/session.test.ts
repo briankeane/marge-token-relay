@@ -86,6 +86,36 @@ describe('POST /session', () => {
     expect(res.status).to.equal(400);
   });
 
+  it('defaults provider to "google" when omitted', async () => {
+    const { app, kv } = makeApp();
+    const res = await request(app).post('/session').send(validBody);
+    expect(res.status).to.equal(201);
+    const stored = JSON.parse((await kv.get(`session:${res.body.sessionId}`)) as string);
+    expect(stored.consent.provider).to.equal('google');
+  });
+
+  it('accepts a known provider ("spotify") and stores it on the session', async () => {
+    const { app, kv } = makeApp();
+    const body = {
+      ...validBody,
+      consent: { ...validBody.consent, provider: 'spotify', state: 'spotify-state' },
+    };
+    const res = await request(app).post('/session').send(body);
+    expect(res.status).to.equal(201);
+    const stored = JSON.parse((await kv.get(`session:${res.body.sessionId}`)) as string);
+    expect(stored.consent.provider).to.equal('spotify');
+  });
+
+  it('rejects an unknown provider with 400', async () => {
+    const { app } = makeApp();
+    const body = {
+      ...validBody,
+      consent: { ...validBody.consent, provider: 'dropbox', state: 'dropbox-state' },
+    };
+    const res = await request(app).post('/session').send(body);
+    expect(res.status).to.equal(400);
+  });
+
   it('rejects a second session reusing the same state with 409', async () => {
     const { app } = makeApp();
     const first = await request(app).post('/session').send(validBody);

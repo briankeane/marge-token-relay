@@ -37,6 +37,24 @@ describe('GET /authorize', () => {
     expect(loc.searchParams.get('state')).to.equal('st1');
   });
 
+  it('302-redirects to Spotify for a spotify-provider session, without Google-only params', async () => {
+    const { app, kv } = makeApp();
+    const id = newToken();
+    const spotifyRecord: SessionRecord = {
+      ...record,
+      consent: { ...record.consent, provider: 'spotify' },
+    };
+    await kv.put(sessionKey(id), JSON.stringify(spotifyRecord), 600);
+    const res = await request(app).get(`/authorize?session=${id}`).redirects(0);
+    expect(res.status).to.equal(302);
+    const loc = new URL(res.headers.location);
+    expect(loc.origin).to.equal('https://accounts.spotify.com');
+    expect(loc.searchParams.get('client_id')).to.equal('c1');
+    expect(loc.searchParams.get('redirect_uri')).to.equal('https://relay.test/callback');
+    expect(loc.searchParams.has('access_type')).to.equal(false);
+    expect(loc.searchParams.has('prompt')).to.equal(false);
+  });
+
   it('returns 410 for a well-formed but unknown/expired session', async () => {
     const { app } = makeApp();
     const res = await request(app).get(`/authorize?session=${newToken()}`).redirects(0);

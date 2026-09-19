@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { newToken } from '../lib/ids.js';
 import { sessionKey, stateKey, type SessionRecord } from '../lib/session.js';
-import type { ConsentParams } from '../lib/google.js';
+import { DEFAULT_PROVIDER, type ConsentParams } from '../lib/providers.js';
 import { isValidSealRecipientKey } from '../lib/crypto.js';
 
 function parseConsent(body: unknown): ConsentParams | null {
@@ -10,9 +10,9 @@ function parseConsent(body: unknown): ConsentParams | null {
   const b = body as Record<string, unknown>;
   const c = b.consent as Record<string, unknown> | undefined;
   if (!c) return null;
-  const { clientId, scopes, state, codeChallenge, loginHint } = c;
+  const { clientId, scopes, state, codeChallenge, loginHint, provider } = c;
   // Required consent fields must be non-empty strings — a blank clientId/state
-  // produces a Google authorization URL that Google rejects with no useful error.
+  // produces an authorization URL that the provider rejects with no useful error.
   if (
     typeof clientId !== 'string' ||
     clientId.length === 0 ||
@@ -22,11 +22,12 @@ function parseConsent(body: unknown): ConsentParams | null {
     state.length === 0 ||
     typeof codeChallenge !== 'string' ||
     codeChallenge.length === 0 ||
-    (loginHint !== undefined && typeof loginHint !== 'string')
+    (loginHint !== undefined && typeof loginHint !== 'string') ||
+    (provider !== undefined && typeof provider !== 'string')
   ) {
     return null;
   }
-  return { clientId, scopes, state, codeChallenge, loginHint };
+  return { clientId, scopes, state, codeChallenge, loginHint, provider };
 }
 
 export function sessionRouter(deps: AppDeps): Router {
@@ -44,6 +45,16 @@ export function sessionRouter(deps: AppDeps): Router {
       res.status(400).json({ error: 'invalid_request' });
       return;
     }
+
+    // Resolve and validate the provider against the allowlist before creating a
+    // session — an unknown provider can't produce a working consent URL, so fail
+    // fast here rather than at /authorize. Absent provider means Google (legacy).
+    const provider = consent.provider ?? DEFAULT_PROVIDER;
+    if (!(provider in deps.config.providers)) {
+      res.status(400).json({ error: 'invalid_request' });
+      return;
+    }
+    consent.provider = provider;
 
     // `state` must be unique per session (the bot generates it randomly). Reject a
     // reused state with 409 rather than silently overwriting the state→sessionId
