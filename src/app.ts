@@ -6,6 +6,7 @@ import type { Config } from './config.js';
 import { healthRouter } from './api/health.js';
 import { sessionRouter } from './api/session.js';
 import { authorizeRouter } from './api/authorize.js';
+import { connectRouter } from './api/connect.js';
 import { callbackRouter } from './api/callback.js';
 import { resultRouter } from './api/result.js';
 import { errorHandler } from './middleware/error.js';
@@ -26,8 +27,10 @@ export function buildApp(deps: AppDeps): Express {
 
   app.use(healthRouter);
   app.use('/session', limiter);
+  app.use('/connect', limiter);
   app.use('/result', limiter);
   app.use(sessionRouter(deps));
+  app.use(connectRouter(deps));
   app.use(authorizeRouter(deps));
   app.use(callbackRouter(deps));
   app.use(resultRouter(deps));

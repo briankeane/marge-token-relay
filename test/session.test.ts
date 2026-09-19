@@ -41,7 +41,7 @@ describe('POST /session', () => {
     expect(res.status).to.equal(201);
     expect(res.body.sessionId).to.match(/^[A-Za-z0-9_-]{43}$/);
     expect(res.body.authorizeUrl).to.equal(
-      `https://relay.test/authorize?session=${res.body.sessionId}`,
+      `https://relay.test/connect?session=${res.body.sessionId}`,
     );
   });
 
