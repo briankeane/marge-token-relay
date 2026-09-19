@@ -56,3 +56,35 @@ In Google Cloud Console, create an **OAuth client of type "Web application"**:
 - Start with scope `openid email profile` (no API enablement needed).
 
 Put its client ID/secret in `test/e2e/.env`.
+
+## `spotify` mode — real browser consent + Spotify token exchange
+
+Same shape as `real`, but sends `provider: "spotify"` and redeems the code at
+Spotify's token endpoint. Env vars (in `test/e2e/.env` or exported):
+
+```
+RELAY_BASE_URL=https://auth.marge-bot.com   # or http://127.0.0.1:3000 for a local relay
+SPOTIFY_CLIENT_ID=...
+SPOTIFY_CLIENT_SECRET=...
+SPOTIFY_SCOPES=playlist-modify-public playlist-modify-private   # optional
+```
+
+```bash
+test/e2e/.venv/bin/python test/e2e/relay_smoke.py spotify          # masks tokens
+test/e2e/.venv/bin/python test/e2e/relay_smoke.py spotify --show   # prints tokens
+```
+
+Expected: `PASS spotify: ...` with a non-empty access + refresh token.
+
+### Spotify app setup (step 0 for `spotify` mode)
+
+In the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard),
+create an app:
+
+- **Redirect URI** must exactly equal `<RELAY_BASE_URL>/callback`. Spotify requires
+  **HTTPS** — `https://auth.marge-bot.com/callback` for the deployed relay. `localhost`
+  is banned; only a loopback IP may use HTTP, so for a **local** relay register
+  `http://127.0.0.1:3000/callback` and run the relay with `BASE_URL=http://127.0.0.1:3000`.
+- In Development Mode, add the consenting Spotify account to the app's **user list**.
+
+Put the client ID/secret in `test/e2e/.env`.
