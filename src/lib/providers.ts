@@ -13,6 +13,8 @@ export interface ConsentParams {
 // The set is an allowlist (see Config.providers): the bot picks a provider by
 // name, it can never point the relay at an arbitrary URL.
 export interface OAuthProvider {
+  // Human-readable name shown on the /connect interstitial (e.g. "Google", "Spotify").
+  displayName: string;
   authorizeEndpoint: string;
   // Fixed provider-specific query params merged onto every consent URL
   // (e.g. Google's access_type=offline & prompt=consent). Empty for providers

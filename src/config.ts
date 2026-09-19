@@ -26,11 +26,13 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   // config-only change; nothing else in the relay is provider-aware.
   const providers: Record<string, OAuthProvider> = {
     google: {
+      displayName: 'Google',
       authorizeEndpoint: env.GOOGLE_AUTH_ENDPOINT ?? 'https://accounts.google.com/o/oauth2/v2/auth',
       extraAuthParams: { access_type: 'offline', prompt: 'consent' },
       supportsLoginHint: true,
     },
     spotify: {
+      displayName: 'Spotify',
       authorizeEndpoint: 'https://accounts.spotify.com/authorize',
       extraAuthParams: {},
       supportsLoginHint: false,
