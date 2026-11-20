@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: marge-token-relay
+    name: marge-web
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
@@ -17,11 +17,11 @@ services:
         value: "600"
       - key: REDIS_URL
         fromService:
-          name: marge-token-relay-kv
+          name: marge-web-kv
           type: keyvalue
           property: connectionString
 
   - type: keyvalue
-    name: marge-token-relay-kv
+    name: marge-web-kv
     plan: free
     ipAllowList: []

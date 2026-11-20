@@ -1,4 +1,4 @@
-# marge-token-relay — Design
+# marge-web — Design
 
 **Date:** 2026-06-29
 **Status:** Approved
@@ -57,7 +57,7 @@ client). Endpoints directory is named `api/` to match the scaffold.
 ## Project structure
 
 ```
-marge-token-relay/
+marge-web/
 ├── src/
 │   ├── server.ts            # bootstrap + listen
 │   ├── app.ts               # builds the Express app (testable, no listen); KV injected
