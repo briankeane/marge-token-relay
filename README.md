@@ -160,13 +160,17 @@ npm test         # runs the full test suite against an in-memory KV
 
 The `KV_BACKEND=memory` backend stores sessions in a plain JavaScript `Map` and requires no Redis instance. Tests always use the memory backend.
 
-## Deploy (Render)
+## Deploy (Render, image-based)
 
-`render.yaml` in the repo root declares a **web service** (`marge-web`) and a **Render Key Value** instance (`marge-web-kv`). The `REDIS_URL` env var is wired automatically from the key-value service's connection string.
+The backend deploys as a Docker image. `render.yaml` declares a web service (`marge-api`, `runtime: image`, pulling `ghcr.io/playola-radio/marge-web:production`), a Postgres database (`marge-api-db`) and a Render Key Value instance (`marge-api-kv`). `DATABASE_URL` and `REDIS_URL` are wired from those automatically; `preDeployCommand` runs `npm run migrate`, and Render probes `/v1/healthCheck`.
 
-**Steps:**
+**How deploys happen:** pushing to `main` triggers `.github/workflows/deploy-production.yml`, which builds `server/Dockerfile.production`, pushes `:production` and `:<git-sha>` to GHCR, then calls the Render deploy API. `autoDeployTrigger` is `off`, so an image push alone does not deploy.
 
-1. Push this repo to GitHub.
-2. In the [Render dashboard](https://render.com/), create a new **Blueprint** and point it at the repo — Render reads `render.yaml` automatically.
-3. Set the `BASE_URL` environment variable to the web service's public URL (e.g., `https://marge-web.onrender.com`). This is the only `sync: false` variable, so Render will prompt for it on first deploy.
-4. Deploy. The build command (`npm ci && npm run build`) compiles TypeScript and copies static HTML to `dist/public/`; the start command runs `node dist/server.js`.
+**MANUAL / OWNER-GATED cutover steps** (NOT done by this repo or CI automatically):
+
+1. Create the Render env group `production` containing `JWT_SECRET`.
+2. Set GitHub repo secrets `RENDER_API_KEY` and `RENDER_PRODUCTION_SERVICE_ID`.
+3. Do the first Blueprint apply in Render; it creates `marge-api`, `marge-api-db` and `marge-api-kv`.
+4. Update the Google and Spotify OAuth **redirect URIs** to `https://api.marge.playola.fm/callback`, byte-for-byte. This must match `BASE_URL` in `render.yaml`.
+
+**Frontend:** deployed separately to Netlify (site `marge-web`, `marge.playola.fm`) via `netlify.toml`.
