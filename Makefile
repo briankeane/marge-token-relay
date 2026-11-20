@@ -1,7 +1,8 @@
-.PHONY: install lint-server test-server build-server prettier-all launch terminate
+.PHONY: install lint-server test-server build-server prettier-all launch launch-detached terminate logs migrate
 
 install:
 	cd server && npm ci
+	cd client && npm ci
 
 lint-server:
 	cd server && npm run lint
@@ -16,7 +17,16 @@ prettier-all:
 	npx prettier --write .
 
 launch:
-	@echo "requires Phase 2 docker-compose (see Task 7)"
+	docker compose up
+
+launch-detached:
+	docker compose up -d
 
 terminate:
-	@echo "requires Phase 2 docker-compose (see Task 7)"
+	docker compose down
+
+logs:
+	docker compose logs -f
+
+migrate:
+	docker compose run --rm migrate
