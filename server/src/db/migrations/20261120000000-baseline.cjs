@@ -1,0 +1,36 @@
+'use strict';
+
+/**
+ * Baseline migration: users table.
+ * CommonJS (.cjs) because sequelize-cli require()s migration files; the rest of
+ * the server package is native ESM.
+ */
+module.exports = {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.createTable('users', {
+      id: {
+        type: Sequelize.UUID,
+        defaultValue: Sequelize.UUIDV4,
+        primaryKey: true,
+        allowNull: false,
+      },
+      email: {
+        type: Sequelize.STRING,
+        unique: true,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
+  },
+
+  async down(queryInterface) {
+    await queryInterface.dropTable('users');
+  },
+};

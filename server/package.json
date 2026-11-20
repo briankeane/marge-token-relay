@@ -3,20 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && cp -r src/public dist/public",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint . --ext .ts && prettier --check \"**/*.ts\"",
-    "test": "mocha"
+    "test": "mocha",
+    "migrate": "sequelize-cli db:migrate",
+    "migrate:undo": "sequelize-cli db:migrate:undo"
   },
   "dependencies": {
     "express": "^5.0.0",
-    "helmet": "^8.0.0",
     "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
     "libsodium-wrappers": "^0.7.15",
-    "redis": "^4.7.0"
+    "pg": "^8.23.1",
+    "redis": "^4.7.0",
+    "sequelize": "^6.37.8"
   },
   "devDependencies": {
     "@types/chai": "^4.3.0",
@@ -30,6 +36,7 @@
     "eslint": "^8.57.0",
     "mocha": "^10.7.0",
     "prettier": "^3.3.0",
+    "sequelize-cli": "^6.6.5",
     "supertest": "^7.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
