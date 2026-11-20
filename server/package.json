@@ -1,5 +1,5 @@
 {
-  "name": "marge-web",
+  "name": "marge-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
