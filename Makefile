@@ -15,6 +15,8 @@ build-server:
 
 prettier-all:
 	npx prettier --write .
+	cd server && npx prettier --write .
+	cd client && npx prettier --write .
 
 launch:
 	docker compose up

@@ -150,7 +150,10 @@ Every provider must be told to accept the relay's single callback URL, `${BASE_U
 
 ## Local development
 
+The backend relay now lives in `server/`. Run it directly:
+
 ```bash
+cd server
 cp .env.example .env
 # Edit .env: set KV_BACKEND=memory (no Redis needed for local dev)
 npm install
@@ -159,6 +162,13 @@ npm test         # runs the full test suite against an in-memory KV
 ```
 
 The `KV_BACKEND=memory` backend stores sessions in a plain JavaScript `Map` and requires no Redis instance. Tests always use the memory backend.
+
+Alternatively, bring up the full stack (Postgres + relay + client) with Docker:
+
+```bash
+make install     # installs server/ and client/ deps
+make launch      # docker compose up (postgres, migrate, server on :3000, client on :5173)
+```
 
 ## Deploy (Render, image-based)
 

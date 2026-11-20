@@ -8,6 +8,13 @@ permissions:
   contents: read
   packages: write
 
+# Serialize production releases so an older run cannot publish the :production
+# tag or trigger a deploy after a newer one. A newer push cancels an in-flight
+# older run, so the latest commit always wins.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
