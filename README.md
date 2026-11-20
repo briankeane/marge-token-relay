@@ -18,16 +18,16 @@ Creates a new relay session. Returns a `sessionId` and the `authorizeUrl` to sen
 
 **Request body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `consent.provider` | string | no | OAuth provider: `google` (default) or `spotify`. Unknown values are rejected with `400`. |
-| `consent.clientId` | string | yes | The provider's OAuth 2.0 client ID |
-| `consent.scopes` | string | yes | Space-delimited OAuth scopes |
-| `consent.state` | string | yes | CSRF/PKCE state value (bot-generated, opaque) |
-| `consent.codeChallenge` | string | yes | PKCE code challenge |
-| `consent.loginHint` | string | no | Optional login hint (email); forwarded only for providers that support it (Google) |
-| `pickupHash` | string | yes | `base64(sha256(pickup_secret))` — standard base64, no padding stripping |
-| `botPublicKey` | string | yes | Raw 32-byte X25519 public key encoded as standard base64 |
+| Field                   | Type   | Required | Description                                                                              |
+| ----------------------- | ------ | -------- | ---------------------------------------------------------------------------------------- |
+| `consent.provider`      | string | no       | OAuth provider: `google` (default) or `spotify`. Unknown values are rejected with `400`. |
+| `consent.clientId`      | string | yes      | The provider's OAuth 2.0 client ID                                                       |
+| `consent.scopes`        | string | yes      | Space-delimited OAuth scopes                                                             |
+| `consent.state`         | string | yes      | CSRF/PKCE state value (bot-generated, opaque)                                            |
+| `consent.codeChallenge` | string | yes      | PKCE code challenge                                                                      |
+| `consent.loginHint`     | string | no       | Optional login hint (email); forwarded only for providers that support it (Google)       |
+| `pickupHash`            | string | yes      | `base64(sha256(pickup_secret))` — standard base64, no padding stripping                  |
+| `botPublicKey`          | string | yes      | Raw 32-byte X25519 public key encoded as standard base64                                 |
 
 **Response — 201 Created:**
 
@@ -83,21 +83,21 @@ Bot polls this endpoint to retrieve the sealed authorization code.
 
 **Request body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sessionId` | string | yes | Session ID returned by `POST /session` |
-| `pickup_secret` | string | yes | The raw pickup secret (pre-image of `pickupHash`) |
+| Field           | Type   | Required | Description                                       |
+| --------------- | ------ | -------- | ------------------------------------------------- |
+| `sessionId`     | string | yes      | Session ID returned by `POST /session`            |
+| `pickup_secret` | string | yes      | The raw pickup secret (pre-image of `pickupHash`) |
 
 **Response status matrix:**
 
-| Status | Body | Meaning |
-|---|---|---|
-| `200` | `{ "sealedCode": "<base64>" }` | OAuth code received and sealed; session deleted (single-use) |
-| `200` | `{ "error": "<string>" }` | The provider returned an OAuth error; session deleted |
-| `204` | _(empty)_ | Session exists but code not yet received — poll again |
-| `403` | `{ "error": "forbidden" }` | `pickup_secret` does not match `pickupHash` |
-| `404` | `{ "error": "not_found" }` | Session not found (never existed or already consumed/expired) |
-| `400` | `{ "error": "invalid_request" }` | Missing or non-string fields |
+| Status | Body                             | Meaning                                                       |
+| ------ | -------------------------------- | ------------------------------------------------------------- |
+| `200`  | `{ "sealedCode": "<base64>" }`   | OAuth code received and sealed; session deleted (single-use)  |
+| `200`  | `{ "error": "<string>" }`        | The provider returned an OAuth error; session deleted         |
+| `204`  | _(empty)_                        | Session exists but code not yet received — poll again         |
+| `403`  | `{ "error": "forbidden" }`       | `pickup_secret` does not match `pickupHash`                   |
+| `404`  | `{ "error": "not_found" }`       | Session not found (never existed or already consumed/expired) |
+| `400`  | `{ "error": "invalid_request" }` | Missing or non-string fields                                  |
 
 ### GET /healthz
 
