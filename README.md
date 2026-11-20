@@ -1,6 +1,6 @@
-# marge-token-relay
+# marge-web
 
-`marge-token-relay` is a small Express/TypeScript service that relays an OAuth 2.0 authorization code from the browser to an off-network bot. It supports multiple OAuth providers (Google and Spotify out of the box; the bot picks one per session via `consent.provider`). It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from the provider, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in Redis under a short-lived session, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
+`marge-web` is a small Express/TypeScript service that relays an OAuth 2.0 authorization code from the browser to an off-network bot. It supports multiple OAuth providers (Google and Spotify out of the box; the bot picks one per session via `consent.provider`). It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from the provider, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in Redis under a short-lived session, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
 
 ## Flow
 
@@ -34,7 +34,7 @@ Creates a new relay session. Returns a `sessionId` and the `authorizeUrl` to sen
 ```json
 {
   "sessionId": "xxxxxxxxxxxxxxxx",
-  "authorizeUrl": "https://marge-token-relay.onrender.com/authorize?session=xxxxxxxxxxxxxxxx"
+  "authorizeUrl": "https://marge-web.onrender.com/authorize?session=xxxxxxxxxxxxxxxx"
 }
 ```
 
@@ -162,11 +162,11 @@ The `KV_BACKEND=memory` backend stores sessions in a plain JavaScript `Map` and 
 
 ## Deploy (Render)
 
-`render.yaml` in the repo root declares a **web service** (`marge-token-relay`) and a **Render Key Value** instance (`marge-token-relay-kv`). The `REDIS_URL` env var is wired automatically from the key-value service's connection string.
+`render.yaml` in the repo root declares a **web service** (`marge-web`) and a **Render Key Value** instance (`marge-web-kv`). The `REDIS_URL` env var is wired automatically from the key-value service's connection string.
 
 **Steps:**
 
 1. Push this repo to GitHub.
 2. In the [Render dashboard](https://render.com/), create a new **Blueprint** and point it at the repo — Render reads `render.yaml` automatically.
-3. Set the `BASE_URL` environment variable to the web service's public URL (e.g., `https://marge-token-relay.onrender.com`). This is the only `sync: false` variable, so Render will prompt for it on first deploy.
+3. Set the `BASE_URL` environment variable to the web service's public URL (e.g., `https://marge-web.onrender.com`). This is the only `sync: false` variable, so Render will prompt for it on first deploy.
 4. Deploy. The build command (`npm ci && npm run build`) compiles TypeScript and copies static HTML to `dist/public/`; the start command runs `node dist/server.js`.

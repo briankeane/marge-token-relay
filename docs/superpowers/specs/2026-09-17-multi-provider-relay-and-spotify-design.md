@@ -15,7 +15,7 @@ for Google.
 
 This spec covers two repos:
 
-- **marge-token-relay** (this repo) — the server change. Implemented in this
+- **marge-web** (this repo) — the server change. Implemented in this
   session.
 - **marge-bot** (`github.com/playola-radio/marge-bot`) — the Spotify
   token-manager. Specified here as a handoff; implemented in that repo later.
