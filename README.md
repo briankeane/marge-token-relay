@@ -34,7 +34,7 @@ Creates a new relay session. Returns a `sessionId` and the `authorizeUrl` to sen
 ```json
 {
   "sessionId": "xxxxxxxxxxxxxxxx",
-  "authorizeUrl": "https://marge-web.onrender.com/authorize?session=xxxxxxxxxxxxxxxx"
+  "authorizeUrl": "https://api.marge.playola.fm/authorize?session=xxxxxxxxxxxxxxxx"
 }
 ```
 
@@ -168,9 +168,11 @@ The backend deploys as a Docker image. `render.yaml` declares a web service (`ma
 
 **MANUAL / OWNER-GATED cutover steps** (NOT done by this repo or CI automatically):
 
-1. Create the Render env group `production` containing `JWT_SECRET`.
-2. Set GitHub repo secrets `RENDER_API_KEY` and `RENDER_PRODUCTION_SERVICE_ID`.
-3. Do the first Blueprint apply in Render; it creates `marge-api`, `marge-api-db` and `marge-api-kv`.
-4. Update the Google and Spotify OAuth **redirect URIs** to `https://api.marge.playola.fm/callback`, byte-for-byte. This must match `BASE_URL` in `render.yaml`.
+1. **GHCR image must exist first (ordering).** The `:production` image must already be in GHCR before the Blueprint apply can pull it, so one push to `main` must have run the `deploy-production` workflow's build+push step first. (Its Render deploy-API call will fail until step 4 is done; that is expected on the very first run.)
+2. **Authorize Render to pull the image.** GHCR packages are PRIVATE by default. Before or at the first Blueprint apply, EITHER make the `ghcr.io/playola-radio/marge-web` package public, OR add a Render registry credential (GHCR username + a PAT with `read:packages`) and reference it via `fromRegistryCreds` on the image service in `render.yaml`.
+3. Set GitHub repo secrets `RENDER_API_KEY` and `RENDER_PRODUCTION_SERVICE_ID`.
+4. Do the first Blueprint apply in Render. It creates `marge-api`, `marge-api-db`, `marge-api-kv` and the `production` env group (declared in `render.yaml`; you do not create the group by hand).
+5. Set the VALUE of `JWT_SECRET` in the `production` env group. It is declared `sync: false`, so Render leaves it blank for you to fill in; until set, protected `/v1` routes safely return 401.
+6. Update the Google and Spotify OAuth **redirect URIs** to `https://api.marge.playola.fm/callback`, byte-for-byte. This must match `BASE_URL` in `render.yaml`.
 
 **Frontend:** deployed separately to Netlify (site `marge-web`, `marge.playola.fm`) via `netlify.toml`.

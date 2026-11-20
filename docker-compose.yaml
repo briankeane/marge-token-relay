@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: pass
       POSTGRES_DB: margedev
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d margedev"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d margedev"]
       interval: 1s
       retries: 15
       start_period: 30s
@@ -40,8 +40,10 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - postgres
-      - migrate
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./server:/usr/src/app
       - /usr/src/app/node_modules
