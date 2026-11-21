@@ -29,10 +29,15 @@ describe('loadConfig', () => {
     expect(() => loadConfig({} as NodeJS.ProcessEnv)).to.throw(/BASE_URL/);
   });
 
-  it('throws when KV_BACKEND is redis and REDIS_URL is missing', () => {
+  it('defaults KV_BACKEND to postgres and requires DATABASE_URL', () => {
     expect(() => loadConfig({ BASE_URL: 'https://x.test' } as NodeJS.ProcessEnv)).to.throw(
-      /REDIS_URL/,
+      /DATABASE_URL/,
     );
+    const cfg = loadConfig({
+      BASE_URL: 'https://x.test',
+      DATABASE_URL: 'postgres://u:p@h:5432/db',
+    } as NodeJS.ProcessEnv);
+    expect(cfg.kvBackend).to.equal('postgres');
   });
 
   it('throws when SESSION_TTL_SECONDS is non-numeric or non-positive', () => {

@@ -1,6 +1,6 @@
 # marge-web
 
-`marge-web` is a small Express/TypeScript service that relays an OAuth 2.0 authorization code from the browser to an off-network bot. It supports multiple OAuth providers (Google and Spotify out of the box; the bot picks one per session via `consent.provider`). It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from the provider, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in Redis under a short-lived session, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
+`marge-web` is a small Express/TypeScript service that relays an OAuth 2.0 authorization code from the browser to an off-network bot. It supports multiple OAuth providers (Google and Spotify out of the box; the bot picks one per session via `consent.provider`). It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from the provider, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in a short-lived, single-use session record, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
 
 ## Flow
 
@@ -155,13 +155,13 @@ The backend relay now lives in `server/`. Run it directly:
 ```bash
 cd server
 cp .env.example .env
-# Edit .env: set KV_BACKEND=memory (no Redis needed for local dev)
+# .env.example already sets KV_BACKEND=memory (no database needed for local dev)
 npm install
 npm run dev      # tsx watch — auto-reloads on file changes
 npm test         # runs the full test suite against an in-memory KV
 ```
 
-The `KV_BACKEND=memory` backend stores sessions in a plain JavaScript `Map` and requires no Redis instance. Tests always use the memory backend.
+The `KV_BACKEND=memory` backend stores the relay's single-use sessions in a plain JavaScript `Map` and requires no database. In production `KV_BACKEND=postgres` stores them in the `kv_store` table of the same Postgres (`DATABASE_URL`), so no separate key-value service is needed. Tests always use the memory backend.
 
 Alternatively, bring up the full stack (Postgres + relay + client) with Docker:
 
@@ -172,7 +172,7 @@ make launch      # docker compose up (postgres, migrate, server on :3000, client
 
 ## Deploy (Render, image-based)
 
-The backend deploys as a Docker image. `render.yaml` declares a web service (`marge-api`, `runtime: image`, pulling `ghcr.io/playola-radio/marge-web:production`), a Postgres database (`marge-api-db`) and a Render Key Value instance (`marge-api-kv`). `DATABASE_URL` and `REDIS_URL` are wired from those automatically; `preDeployCommand` runs `npm run migrate`, and Render probes `/v1/healthCheck`.
+The backend deploys as a Docker image. `render.yaml` declares a web service (`marge-api`, `runtime: image`, pulling `ghcr.io/playola-radio/marge-web:production`) and a Postgres database (`marge-api-db`). `DATABASE_URL` is wired from the database automatically, and the relay's session store lives in that same Postgres (`KV_BACKEND=postgres`), so no separate key-value service is needed; `preDeployCommand` runs `npm run migrate`, and Render probes `/v1/healthCheck`.
 
 **How deploys happen:** pushing to `main` (or running the workflow manually via **Run workflow** / `workflow_dispatch`) triggers `.github/workflows/deploy-production.yml`. After the server checks pass, it builds `server/Dockerfile.production`, pushes `:production` and `:<git-sha>` to GHCR, then calls the Render deploy API. That final deploy call is **skipped** whenever the `RENDER_PRODUCTION_SERVICE_ID` secret is unset, so a run before the service exists just builds and pushes the image. `autoDeployTrigger` is `off`, so an image push alone does not deploy.
 
@@ -180,7 +180,7 @@ The backend deploys as a Docker image. `render.yaml` declares a web service (`ma
 
 1. **Seed the image.** Run the `deploy-production` workflow once (merge/push to `main`, or **Run workflow** on the Actions tab). It builds and pushes `ghcr.io/playola-radio/marge-web:production`; the Render deploy call is skipped on this run because `RENDER_PRODUCTION_SERVICE_ID` isn't set yet, so the run is green.
 2. **Authorize Render to pull the image.** GHCR packages are PRIVATE by default. EITHER make the `ghcr.io/playola-radio/marge-web` package public, OR add a Render registry credential (GHCR username + a PAT with `read:packages`) and reference it via `fromRegistryCreds` on the image service in `render.yaml`.
-3. **Do the first Blueprint apply in Render.** Now that the image exists and is pullable, this succeeds and creates the service `marge-api`, the database `marge-api-db`, the key-value `marge-api-kv`, and the `production` env group (declared in `render.yaml`; you do not create the group by hand).
+3. **Do the first Blueprint apply in Render.** Now that the image exists and is pullable, this succeeds and creates the service `marge-api`, the database `marge-api-db`, and the `production` env group (declared in `render.yaml`; you do not create the group by hand).
 4. **Set the VALUE of `JWT_SECRET`** in the `production` env group. It is declared `sync: false`, so Render leaves it blank for you to fill in; until set, protected `/v1` routes safely return 401.
 5. **Set GitHub repo secrets** `RENDER_API_KEY` and `RENDER_PRODUCTION_SERVICE_ID` (the service ID now exists, from step 3). From here on, pushes to `main` build, push, and auto-deploy.
 6. **Update the Google and Spotify OAuth redirect URIs** to `https://api.marge.playola.fm/callback`, byte-for-byte. This must match `BASE_URL` in `render.yaml`.

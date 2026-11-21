@@ -1,10 +1,9 @@
 import type { OAuthProvider } from './lib/providers.js';
 
-export type KvBackend = 'redis' | 'memory';
+export type KvBackend = 'postgres' | 'memory';
 
 export interface Config {
   baseUrl: string;
-  redisUrl?: string;
   kvBackend: KvBackend;
   providers: Record<string, OAuthProvider>;
   sessionTtlSeconds: number;
@@ -14,9 +13,12 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const baseUrl = env.BASE_URL;
   if (!baseUrl) throw new Error('BASE_URL is required');
-  const kvBackend: KvBackend = env.KV_BACKEND === 'memory' ? 'memory' : 'redis';
-  if (kvBackend === 'redis' && !env.REDIS_URL) {
-    throw new Error('REDIS_URL is required when KV_BACKEND=redis');
+  // The relay's single-use, TTL'd session store lives in Postgres in
+  // production; 'memory' is an in-process Map for local dev and tests, so the
+  // relay still boots with no database.
+  const kvBackend: KvBackend = env.KV_BACKEND === 'memory' ? 'memory' : 'postgres';
+  if (kvBackend === 'postgres' && !env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required when KV_BACKEND=postgres');
   }
   const sessionTtlSeconds = Number(env.SESSION_TTL_SECONDS ?? 600);
   if (!Number.isFinite(sessionTtlSeconds) || sessionTtlSeconds <= 0) {
@@ -40,7 +42,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   };
   return {
     baseUrl: baseUrl.replace(/\/$/, ''),
-    redisUrl: env.REDIS_URL,
     kvBackend,
     providers,
     sessionTtlSeconds,
