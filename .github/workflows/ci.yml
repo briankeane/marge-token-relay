@@ -32,6 +32,42 @@ jobs:
           kill $SERVER_PID
           exit $STATUS
 
+  # The DB-less `server` job proves the relay boots and tests without a
+  # database (KV_BACKEND=memory). This job runs the migration and the full
+  # suite against a real Postgres so the production session store (PostgresKV,
+  # KV_BACKEND=postgres) is actually exercised.
+  server-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: margedev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d margedev"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DATABASE_URL: postgres://postgres:pass@localhost:5432/margedev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run migrate
+      - run: npm test
+
   client:
     runs-on: ubuntu-latest
     defaults:
