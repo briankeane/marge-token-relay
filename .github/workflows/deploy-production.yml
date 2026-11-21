@@ -21,14 +21,31 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: margedev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d margedev"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
     env:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       RENDER_PRODUCTION_SERVICE_ID: ${{ secrets.RENDER_PRODUCTION_SERVICE_ID }}
+      DATABASE_URL: postgres://postgres:pass@localhost:5432/margedev
     steps:
       - uses: actions/checkout@v4
 
       # Gate publishing on the server checks for this exact commit, so a change
-      # that compiles but fails the relay tests is never built or deployed.
+      # that compiles but fails the relay tests — including the Postgres session
+      # store (DATABASE_URL is set, so the PostgresKV suite runs) — is never
+      # built or deployed.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -40,6 +57,7 @@ jobs:
         run: |
           npm ci
           npm run lint
+          npm run migrate
           npm test
 
       - uses: docker/setup-buildx-action@v3

@@ -13,7 +13,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: KV_BACKEND
-        value: redis
+        value: postgres
       - key: BASE_URL
         value: https://api.marge.playola.fm
       - key: GOOGLE_AUTH_ENDPOINT
@@ -24,17 +24,7 @@ services:
         fromDatabase:
           name: marge-api-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: marge-api-kv
-          type: keyvalue
-          property: connectionString
       - fromGroup: production
-
-  - type: keyvalue
-    name: marge-api-kv
-    plan: free
-    ipAllowList: []
 
 databases:
   - name: marge-api-db

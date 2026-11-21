@@ -22,7 +22,6 @@
     "jsonwebtoken": "^9.0.3",
     "libsodium-wrappers": "^0.7.15",
     "pg": "^8.23.1",
-    "redis": "^4.7.0",
     "sequelize": "^6.37.8"
   },
   "devDependencies": {
