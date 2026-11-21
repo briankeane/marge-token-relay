@@ -3,6 +3,9 @@ name: Deploy production
 on:
   push:
     branches: [main]
+  # Manual trigger: bootstrap the first :production image before the Render
+  # service exists, or force a rebuild / rollback without a code push.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,6 +21,9 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_PRODUCTION_SERVICE_ID: ${{ secrets.RENDER_PRODUCTION_SERVICE_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,9 +44,13 @@ jobs:
             ghcr.io/playola-radio/marge-web:production
             ghcr.io/playola-radio/marge-web:${{ github.sha }}
 
+      # Skipped until the Render service exists and its ID is set as a secret,
+      # so the first bootstrap run (and build-only dispatches) just builds and
+      # pushes the image without failing on a missing service.
       - name: Trigger Render deploy
+        if: ${{ env.RENDER_PRODUCTION_SERVICE_ID != '' }}
         run: |
-          curl -fsS -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_PRODUCTION_SERVICE_ID }}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+          curl -fsS -X POST "https://api.render.com/v1/services/${RENDER_PRODUCTION_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
             -H "Content-Type: application/json" \
             -d '{}'
