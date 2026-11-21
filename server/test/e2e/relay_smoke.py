@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local end-to-end exercise of the marge-token-relay, standing in for marge-bot.
+"""Local end-to-end exercise of the marge-web relay, standing in for marge-bot.
 
 Three modes:
   interop  - no provider, no browser: proves PyNaCl opens what the relay's libsodium sealed.

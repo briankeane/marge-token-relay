@@ -1,0 +1,64 @@
+services:
+  postgres:
+    build: ./docker/postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: margedev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d margedev"]
+      interval: 1s
+      retries: 15
+      start_period: 30s
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  migrate:
+    build:
+      context: ./server
+    command: ["npm", "run", "migrate"]
+    environment:
+      DATABASE_URL: postgres://postgres:pass@postgres:5432/margedev
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server:/usr/src/app
+      - /usr/src/app/node_modules
+
+  server:
+    build:
+      context: ./server
+    command: ["npm", "run", "dev"]
+    environment:
+      BASE_URL: http://localhost:3000
+      KV_BACKEND: memory
+      DATABASE_URL: postgres://postgres:pass@postgres:5432/margedev
+      JWT_SECRET: dev-secret
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./server:/usr/src/app
+      - /usr/src/app/node_modules
+
+  client:
+    build:
+      context: ./client
+    command: ["npm", "run", "dev", "--", "--host", "--port", "5173"]
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/usr/src/app
+      - /usr/src/app/node_modules
+
+volumes:
+  pgdata:

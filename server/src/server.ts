@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   const kv = await createKv(config);
   const app = buildApp({ kv, config });
   app.listen(config.port, () => {
-    console.log(`marge-token-relay listening on :${config.port}`);
+    console.log(`marge-web listening on :${config.port}`);
   });
 }
 

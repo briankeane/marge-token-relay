@@ -1,6 +1,6 @@
-# marge-token-relay
+# marge-web
 
-`marge-token-relay` is a small Express/TypeScript service that relays an OAuth 2.0 authorization code from the browser to an off-network bot. It supports multiple OAuth providers (Google and Spotify out of the box; the bot picks one per session via `consent.provider`). It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from the provider, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in Redis under a short-lived session, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
+`marge-web` is a small Express/TypeScript service that relays an OAuth 2.0 authorization code from the browser to an off-network bot. It supports multiple OAuth providers (Google and Spotify out of the box; the bot picks one per session via `consent.provider`). It never holds a token, client secret, or plaintext code beyond the instant it seals and stores it: the relay receives the authorization code from the provider, immediately seals it with the bot's X25519 public key using `crypto_box_seal`, stores only the sealed ciphertext in Redis under a short-lived session, and deletes it the moment the bot picks it up. The bot is the only party that can open the sealed code. The pickup endpoint is protected by a single-use, hashed secret so that only the bot that created the session can retrieve the result.
 
 ## Flow
 
@@ -18,23 +18,23 @@ Creates a new relay session. Returns a `sessionId` and the `authorizeUrl` to sen
 
 **Request body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `consent.provider` | string | no | OAuth provider: `google` (default) or `spotify`. Unknown values are rejected with `400`. |
-| `consent.clientId` | string | yes | The provider's OAuth 2.0 client ID |
-| `consent.scopes` | string | yes | Space-delimited OAuth scopes |
-| `consent.state` | string | yes | CSRF/PKCE state value (bot-generated, opaque) |
-| `consent.codeChallenge` | string | yes | PKCE code challenge |
-| `consent.loginHint` | string | no | Optional login hint (email); forwarded only for providers that support it (Google) |
-| `pickupHash` | string | yes | `base64(sha256(pickup_secret))` — standard base64, no padding stripping |
-| `botPublicKey` | string | yes | Raw 32-byte X25519 public key encoded as standard base64 |
+| Field                   | Type   | Required | Description                                                                              |
+| ----------------------- | ------ | -------- | ---------------------------------------------------------------------------------------- |
+| `consent.provider`      | string | no       | OAuth provider: `google` (default) or `spotify`. Unknown values are rejected with `400`. |
+| `consent.clientId`      | string | yes      | The provider's OAuth 2.0 client ID                                                       |
+| `consent.scopes`        | string | yes      | Space-delimited OAuth scopes                                                             |
+| `consent.state`         | string | yes      | CSRF/PKCE state value (bot-generated, opaque)                                            |
+| `consent.codeChallenge` | string | yes      | PKCE code challenge                                                                      |
+| `consent.loginHint`     | string | no       | Optional login hint (email); forwarded only for providers that support it (Google)       |
+| `pickupHash`            | string | yes      | `base64(sha256(pickup_secret))` — standard base64, no padding stripping                  |
+| `botPublicKey`          | string | yes      | Raw 32-byte X25519 public key encoded as standard base64                                 |
 
 **Response — 201 Created:**
 
 ```json
 {
   "sessionId": "xxxxxxxxxxxxxxxx",
-  "authorizeUrl": "https://marge-token-relay.onrender.com/authorize?session=xxxxxxxxxxxxxxxx"
+  "authorizeUrl": "https://api.marge.playola.fm/authorize?session=xxxxxxxxxxxxxxxx"
 }
 ```
 
@@ -83,21 +83,21 @@ Bot polls this endpoint to retrieve the sealed authorization code.
 
 **Request body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sessionId` | string | yes | Session ID returned by `POST /session` |
-| `pickup_secret` | string | yes | The raw pickup secret (pre-image of `pickupHash`) |
+| Field           | Type   | Required | Description                                       |
+| --------------- | ------ | -------- | ------------------------------------------------- |
+| `sessionId`     | string | yes      | Session ID returned by `POST /session`            |
+| `pickup_secret` | string | yes      | The raw pickup secret (pre-image of `pickupHash`) |
 
 **Response status matrix:**
 
-| Status | Body | Meaning |
-|---|---|---|
-| `200` | `{ "sealedCode": "<base64>" }` | OAuth code received and sealed; session deleted (single-use) |
-| `200` | `{ "error": "<string>" }` | The provider returned an OAuth error; session deleted |
-| `204` | _(empty)_ | Session exists but code not yet received — poll again |
-| `403` | `{ "error": "forbidden" }` | `pickup_secret` does not match `pickupHash` |
-| `404` | `{ "error": "not_found" }` | Session not found (never existed or already consumed/expired) |
-| `400` | `{ "error": "invalid_request" }` | Missing or non-string fields |
+| Status | Body                             | Meaning                                                       |
+| ------ | -------------------------------- | ------------------------------------------------------------- |
+| `200`  | `{ "sealedCode": "<base64>" }`   | OAuth code received and sealed; session deleted (single-use)  |
+| `200`  | `{ "error": "<string>" }`        | The provider returned an OAuth error; session deleted         |
+| `204`  | _(empty)_                        | Session exists but code not yet received — poll again         |
+| `403`  | `{ "error": "forbidden" }`       | `pickup_secret` does not match `pickupHash`                   |
+| `404`  | `{ "error": "not_found" }`       | Session not found (never existed or already consumed/expired) |
+| `400`  | `{ "error": "invalid_request" }` | Missing or non-string fields                                  |
 
 ### GET /healthz
 
@@ -150,7 +150,10 @@ Every provider must be told to accept the relay's single callback URL, `${BASE_U
 
 ## Local development
 
+The backend relay now lives in `server/`. Run it directly:
+
 ```bash
+cd server
 cp .env.example .env
 # Edit .env: set KV_BACKEND=memory (no Redis needed for local dev)
 npm install
@@ -160,13 +163,26 @@ npm test         # runs the full test suite against an in-memory KV
 
 The `KV_BACKEND=memory` backend stores sessions in a plain JavaScript `Map` and requires no Redis instance. Tests always use the memory backend.
 
-## Deploy (Render)
+Alternatively, bring up the full stack (Postgres + relay + client) with Docker:
 
-`render.yaml` in the repo root declares a **web service** (`marge-token-relay`) and a **Render Key Value** instance (`marge-token-relay-kv`). The `REDIS_URL` env var is wired automatically from the key-value service's connection string.
+```bash
+make install     # installs server/ and client/ deps
+make launch      # docker compose up (postgres, migrate, server on :3000, client on :5173)
+```
 
-**Steps:**
+## Deploy (Render, image-based)
 
-1. Push this repo to GitHub.
-2. In the [Render dashboard](https://render.com/), create a new **Blueprint** and point it at the repo — Render reads `render.yaml` automatically.
-3. Set the `BASE_URL` environment variable to the web service's public URL (e.g., `https://marge-token-relay.onrender.com`). This is the only `sync: false` variable, so Render will prompt for it on first deploy.
-4. Deploy. The build command (`npm ci && npm run build`) compiles TypeScript and copies static HTML to `dist/public/`; the start command runs `node dist/server.js`.
+The backend deploys as a Docker image. `render.yaml` declares a web service (`marge-api`, `runtime: image`, pulling `ghcr.io/playola-radio/marge-web:production`), a Postgres database (`marge-api-db`) and a Render Key Value instance (`marge-api-kv`). `DATABASE_URL` and `REDIS_URL` are wired from those automatically; `preDeployCommand` runs `npm run migrate`, and Render probes `/v1/healthCheck`.
+
+**How deploys happen:** pushing to `main` (or running the workflow manually via **Run workflow** / `workflow_dispatch`) triggers `.github/workflows/deploy-production.yml`. After the server checks pass, it builds `server/Dockerfile.production`, pushes `:production` and `:<git-sha>` to GHCR, then calls the Render deploy API. That final deploy call is **skipped** whenever the `RENDER_PRODUCTION_SERVICE_ID` secret is unset, so a run before the service exists just builds and pushes the image. `autoDeployTrigger` is `off`, so an image push alone does not deploy.
+
+**MANUAL / OWNER-GATED cutover steps** (NOT done by this repo or CI automatically), in order:
+
+1. **Seed the image.** Run the `deploy-production` workflow once (merge/push to `main`, or **Run workflow** on the Actions tab). It builds and pushes `ghcr.io/playola-radio/marge-web:production`; the Render deploy call is skipped on this run because `RENDER_PRODUCTION_SERVICE_ID` isn't set yet, so the run is green.
+2. **Authorize Render to pull the image.** GHCR packages are PRIVATE by default. EITHER make the `ghcr.io/playola-radio/marge-web` package public, OR add a Render registry credential (GHCR username + a PAT with `read:packages`) and reference it via `fromRegistryCreds` on the image service in `render.yaml`.
+3. **Do the first Blueprint apply in Render.** Now that the image exists and is pullable, this succeeds and creates the service `marge-api`, the database `marge-api-db`, the key-value `marge-api-kv`, and the `production` env group (declared in `render.yaml`; you do not create the group by hand).
+4. **Set the VALUE of `JWT_SECRET`** in the `production` env group. It is declared `sync: false`, so Render leaves it blank for you to fill in; until set, protected `/v1` routes safely return 401.
+5. **Set GitHub repo secrets** `RENDER_API_KEY` and `RENDER_PRODUCTION_SERVICE_ID` (the service ID now exists, from step 3). From here on, pushes to `main` build, push, and auto-deploy.
+6. **Update the Google and Spotify OAuth redirect URIs** to `https://api.marge.playola.fm/callback`, byte-for-byte. This must match `BASE_URL` in `render.yaml`.
+
+**Frontend:** deployed separately to Netlify (site `marge-web`, `marge.playola.fm`) via `netlify.toml`.

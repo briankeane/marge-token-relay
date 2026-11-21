@@ -260,7 +260,7 @@ Create `test/e2e/relay_smoke.py`:
 
 ```python
 #!/usr/bin/env python3
-"""Local end-to-end exercise of the marge-token-relay, standing in for marge-bot.
+"""Local end-to-end exercise of the marge-web, standing in for marge-bot.
 
 Two modes (see Tasks 3-4):
   interop  - no Google, no browser: proves PyNaCl opens what the relay's libsodium sealed.

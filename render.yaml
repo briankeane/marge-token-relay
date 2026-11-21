@@ -1,27 +1,47 @@
 services:
   - type: web
-    name: marge-token-relay
-    runtime: node
-    plan: free
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
-    healthCheckPath: /healthz
+    name: marge-api
+    runtime: image
+    plan: starter
+    image:
+      url: ghcr.io/playola-radio/marge-web:production
+    autoDeployTrigger: off
+    dockerCommand: node dist/server.js
+    preDeployCommand: npm run migrate
+    healthCheckPath: /v1/healthCheck
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: KV_BACKEND
         value: redis
       - key: BASE_URL
-        sync: false
+        value: https://api.marge.playola.fm
       - key: GOOGLE_AUTH_ENDPOINT
         value: https://accounts.google.com/o/oauth2/v2/auth
       - key: SESSION_TTL_SECONDS
         value: "600"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marge-api-db
+          property: connectionString
       - key: REDIS_URL
         fromService:
-          name: marge-token-relay-kv
+          name: marge-api-kv
           type: keyvalue
           property: connectionString
+      - fromGroup: production
 
   - type: keyvalue
-    name: marge-token-relay-kv
+    name: marge-api-kv
     plan: free
     ipAllowList: []
+
+databases:
+  - name: marge-api-db
+    plan: free
+
+envVarGroups:
+  - name: production
+    envVars:
+      - key: JWT_SECRET
+        sync: false
