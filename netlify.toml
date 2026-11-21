@@ -1,0 +1,13 @@
+[build]
+  base = "client"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22.15.0"
+  VITE_SERVER_BASE_URL = "https://api.marge.playola.fm"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

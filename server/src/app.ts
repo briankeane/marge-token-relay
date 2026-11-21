@@ -9,6 +9,7 @@ import { authorizeRouter } from './api/authorize.js';
 import { connectRouter } from './api/connect.js';
 import { callbackRouter } from './api/callback.js';
 import { resultRouter } from './api/result.js';
+import { v1Router } from './v1/index.js';
 import { errorHandler } from './middleware/error.js';
 
 export interface AppDeps {
@@ -34,6 +35,7 @@ export function buildApp(deps: AppDeps): Express {
   app.use(authorizeRouter(deps));
   app.use(callbackRouter(deps));
   app.use(resultRouter(deps));
+  app.use('/v1', v1Router(deps));
   app.use(errorHandler);
   return app;
 }
