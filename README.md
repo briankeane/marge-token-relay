@@ -174,15 +174,15 @@ make launch      # docker compose up (postgres, migrate, server on :3000, client
 
 The backend deploys as a Docker image. `render.yaml` declares a web service (`marge-api`, `runtime: image`, pulling `ghcr.io/playola-radio/marge-web:production`), a Postgres database (`marge-api-db`) and a Render Key Value instance (`marge-api-kv`). `DATABASE_URL` and `REDIS_URL` are wired from those automatically; `preDeployCommand` runs `npm run migrate`, and Render probes `/v1/healthCheck`.
 
-**How deploys happen:** pushing to `main` triggers `.github/workflows/deploy-production.yml`, which builds `server/Dockerfile.production`, pushes `:production` and `:<git-sha>` to GHCR, then calls the Render deploy API. `autoDeployTrigger` is `off`, so an image push alone does not deploy.
+**How deploys happen:** pushing to `main` (or running the workflow manually via **Run workflow** / `workflow_dispatch`) triggers `.github/workflows/deploy-production.yml`. After the server checks pass, it builds `server/Dockerfile.production`, pushes `:production` and `:<git-sha>` to GHCR, then calls the Render deploy API. That final deploy call is **skipped** whenever the `RENDER_PRODUCTION_SERVICE_ID` secret is unset, so a run before the service exists just builds and pushes the image. `autoDeployTrigger` is `off`, so an image push alone does not deploy.
 
-**MANUAL / OWNER-GATED cutover steps** (NOT done by this repo or CI automatically):
+**MANUAL / OWNER-GATED cutover steps** (NOT done by this repo or CI automatically), in order:
 
-1. **GHCR image must exist first (ordering).** The `:production` image must already be in GHCR before the Blueprint apply can pull it, so one push to `main` must have run the `deploy-production` workflow's build+push step first. (Its Render deploy-API call will fail until step 4 is done; that is expected on the very first run.)
-2. **Authorize Render to pull the image.** GHCR packages are PRIVATE by default. Before or at the first Blueprint apply, EITHER make the `ghcr.io/playola-radio/marge-web` package public, OR add a Render registry credential (GHCR username + a PAT with `read:packages`) and reference it via `fromRegistryCreds` on the image service in `render.yaml`.
-3. Set GitHub repo secrets `RENDER_API_KEY` and `RENDER_PRODUCTION_SERVICE_ID`.
-4. Do the first Blueprint apply in Render. It creates `marge-api`, `marge-api-db`, `marge-api-kv` and the `production` env group (declared in `render.yaml`; you do not create the group by hand).
-5. Set the VALUE of `JWT_SECRET` in the `production` env group. It is declared `sync: false`, so Render leaves it blank for you to fill in; until set, protected `/v1` routes safely return 401.
-6. Update the Google and Spotify OAuth **redirect URIs** to `https://api.marge.playola.fm/callback`, byte-for-byte. This must match `BASE_URL` in `render.yaml`.
+1. **Seed the image.** Run the `deploy-production` workflow once (merge/push to `main`, or **Run workflow** on the Actions tab). It builds and pushes `ghcr.io/playola-radio/marge-web:production`; the Render deploy call is skipped on this run because `RENDER_PRODUCTION_SERVICE_ID` isn't set yet, so the run is green.
+2. **Authorize Render to pull the image.** GHCR packages are PRIVATE by default. EITHER make the `ghcr.io/playola-radio/marge-web` package public, OR add a Render registry credential (GHCR username + a PAT with `read:packages`) and reference it via `fromRegistryCreds` on the image service in `render.yaml`.
+3. **Do the first Blueprint apply in Render.** Now that the image exists and is pullable, this succeeds and creates the service `marge-api`, the database `marge-api-db`, the key-value `marge-api-kv`, and the `production` env group (declared in `render.yaml`; you do not create the group by hand).
+4. **Set the VALUE of `JWT_SECRET`** in the `production` env group. It is declared `sync: false`, so Render leaves it blank for you to fill in; until set, protected `/v1` routes safely return 401.
+5. **Set GitHub repo secrets** `RENDER_API_KEY` and `RENDER_PRODUCTION_SERVICE_ID` (the service ID now exists, from step 3). From here on, pushes to `main` build, push, and auto-deploy.
+6. **Update the Google and Spotify OAuth redirect URIs** to `https://api.marge.playola.fm/callback`, byte-for-byte. This must match `BASE_URL` in `render.yaml`.
 
 **Frontend:** deployed separately to Netlify (site `marge-web`, `marge.playola.fm`) via `netlify.toml`.

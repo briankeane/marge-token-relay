@@ -1,6 +1,7 @@
 .PHONY: install lint-server test-server build-server prettier-all launch launch-detached terminate logs migrate
 
 install:
+	npm ci
 	cd server && npm ci
 	cd client && npm ci
 
